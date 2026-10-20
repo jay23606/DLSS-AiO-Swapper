@@ -116,6 +116,16 @@ The repository and the installer contain **not a single third-party DLL**. The a
   - **310.9.16 or newer** → contains Preset **A and B** (recommended)
   - **310.8.x** → Preset A only
 
+## Security
+
+After the malware rumours around the discontinued DLSS 5 Swapper, here is exactly what this app does and doesn't do:
+
+- **Nothing third-party is bundled.** The installer contains the app and one small helper (`nv-drs.exe`, built from [`tools/NvDrs.cs`](tools/NvDrs.cs) in this repo) – no DLLs, no ReShade, no add-ons.
+- **Every download is pinned.** Each file is checked against a fixed SHA-256 (identical to the digest the original authors publish on their GitHub releases) or must carry a valid *NVIDIA Corporation* signature. Anything else is rejected.
+- **The only program it ever runs is the official ReShade setup** – and it re-checks its SHA-256 right before starting it, so a file swapped on disk afterwards is refused.
+- **No access to browsers, cookies, passwords or wallets. No Defender exclusions, no autostart entries, no scheduled tasks, no telemetry.** The app only talks to the download sources listed above and to the GitHub API for the update check.
+- Every release lists the SHA-256 of both executables in `SHA256SUMS.txt`. Only download from [this repository's releases](../../releases) – copies elsewhere are not from me.
+
 ## Installation
 
 1. Download `DLSS-AiO-Swapper-Setup-x.y.z.exe` (or the portable version) from [Releases](../../releases).

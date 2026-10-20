@@ -150,7 +150,25 @@ async function copyOver(src, dest) {
   try { await fs.promises.chmod(dest, 0o666); } catch { /* the copy is what matters */ }
 }
 
+// The only installers this app will ever start: the official ReShade add-on
+// setups from reshade.me, by SHA-256. Checked right before every launch, so a
+// file swapped on disk after the download is refused instead of executed.
+const OFFICIAL_RESHADE_SETUPS = new Set([
+  'afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445' // ReShade_Setup_6.8.0_Addon.exe
+]);
+
+function officialSetup(setupExe) {
+  try {
+    return OFFICIAL_RESHADE_SETUPS.has(crypto.createHash('sha256').update(fs.readFileSync(setupExe)).digest('hex'));
+  } catch {
+    return false;
+  }
+}
+
 function runSetup(setupExe, args, log) {
+  if (!officialSetup(setupExe)) {
+    return Promise.resolve({ code: -1, output: `Refused to run ${path.basename(String(setupExe))}: it is not the official ReShade setup (SHA-256 mismatch). Download ReShade again in the Components tab.` });
+  }
   return new Promise((resolve) => {
     log('runningSetup', { setup: path.basename(setupExe), args: args.slice(1).join(' ') });
     const child = spawn(setupExe, args, { windowsHide: true });
