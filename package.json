@@ -66,8 +66,7 @@
       {
         "provider": "github",
         "owner": "machiavelli31",
-        "repo": "DLSS-AiO-Swapper",
-        "private": true
+        "repo": "DLSS-AiO-Swapper"
       }
     ]
   },
