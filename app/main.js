@@ -346,7 +346,7 @@ const payloadMissing = () => {
   let missing = [];
   try { missing = components.status(componentsDir(), { cacheDir: app.getPath('userData') }).missing; } catch { /* guidance only */ }
   let userData = null;
-  try { userData = app.getPath('userData'); } catch { /* not in Electron */ }
+  try { userData = displayPath(app.getPath('userData')); } catch { /* not in Electron */ }
   return missingPayload({ userData, missing });
 };
 
@@ -1054,6 +1054,18 @@ function legacyPayload() {
   const extra = [path.join(process.resourcesPath || '', 'payload')];
   return components.legacyDirs(extra).find((d) => path.resolve(d).toLowerCase() !== own) || null;
 }
+
+// Paths shown in the UI never contain the Windows user name.
+function displayPath(p) {
+  if (!p || typeof p !== 'string') return p;
+  const swaps = [];
+  try { swaps.push([app.getPath('appData'), '%APPDATA%']); } catch { /* not in Electron */ }
+  try { swaps.push([app.getPath('home'), '%USERPROFILE%']); } catch { /* not in Electron */ }
+  for (const [from, to] of swaps) {
+    if (from && p.toLowerCase().startsWith(from.toLowerCase())) return to + p.slice(from.length);
+  }
+  return p;
+}
 ipcMain.handle('components-status', () => {
   try {
     const result = components.status(componentsDir(), componentOpts());
@@ -1066,7 +1078,7 @@ ipcMain.handle('components-status', () => {
       active = p ? path.dirname(p.source.dir) : null;
       activeComplete = Boolean(p && payloadComplete(active, p.source));
     } catch { /* informational */ }
-    return { ok: true, ...result, legacy: offer.length ? { dir: legacy, components: offer } : null, activePayload: active, activeComplete };
+    return { ok: true, ...result, payloadDir: displayPath(result.payloadDir), legacy: offer.length ? { dir: displayPath(legacy), components: offer } : null, activePayload: displayPath(active), activeComplete };
   } catch (error) { return componentError(error); }
 });
 ipcMain.handle('dlss-versions', async () => {
