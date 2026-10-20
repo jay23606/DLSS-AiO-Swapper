@@ -8,6 +8,16 @@
   <b>The all-in-one DLSS swapper.</b> One-click DLSS 5 Neural Rendering, the new Preset B, per-game NVIDIA DLSS presets, the DLSS indicator and DLL management – no Profile Inspector, no copying files around.
 </p>
 
+<p align="center">
+  <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/machiavelli31/DLSS-AiO-Swapper?label=download&style=for-the-badge&color=a855f7"></a>
+  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/machiavelli31/DLSS-AiO-Swapper/total?style=for-the-badge&color=22d3ee"></a>
+  <a href="../../stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/machiavelli31/DLSS-AiO-Swapper?style=for-the-badge&color=f5c542"></a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/01-library.png" width="900" alt="DLSS AiO Swapper – game library">
+</p>
+
 ---
 
 ## What is DLSS AiO Swapper?
@@ -21,6 +31,15 @@
 - It **backs everything up first** and undoes any change with one click.
 
 In short: instead of Profile Inspector, registry tweaks, ReShade setup, add-on folders and copying DLLs by hand – one app, one click.
+
+## Screenshots
+
+| | |
+|---|---|
+| <img src="docs/screenshots/03-dlss-settings.png" alt="DLSS 5 model and NVIDIA DLSS settings per game"> | <img src="docs/screenshots/04-components.png" alt="Components – everything downloaded from the official sources"> |
+| **Per game:** DLSS 5 model A/B, Super Resolution, Ray Reconstruction and Frame Generation presets – then *Install DLSS 5*. | **Components:** every DLL straight from its official source, NVIDIA signature checked. |
+| <img src="docs/screenshots/02-game.png" alt="Game page"> | <img src="docs/screenshots/05-indicator.png" alt="DLSS indicator switch"> |
+| **Game page:** detected executable, API and the right install route, picked automatically. | **DLSS indicator:** NVIDIA's in-game overlay on or off with one switch. |
 
 ## Why this app?
 
@@ -121,6 +140,10 @@ npm run dist    # build installer + portable version into dist/
 ```
 
 `npm run helper` compiles `tools/NvDrs.cs` (NVIDIA driver profile, DLSS indicator, signature check) into `build/nv-drs.exe` using the C# compiler that ships with Windows.
+
+## Like it?
+
+If DLSS AiO Swapper saved you an evening of fiddling, **leave a ⭐ on this repo** – it helps other people find it.
 
 ## License
 
