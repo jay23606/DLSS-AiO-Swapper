@@ -29,6 +29,12 @@ function findInis(gameDir, maxDepth = 6) {
       let text = '';
       try { text = fs.readFileSync(file, 'utf8'); } catch {}
       if (hasConsumer || /^\s*\[RenoDX\.DLSS5\]\s*$/im.test(text)) found.push(file);
+    } else if (hasConsumer && (names.includes('dxgi.dll') || names.includes('d3d11.dll') || names.includes('d3d12.dll')
+      || names.includes('dinput8.dll') || names.includes('version.dll') || names.includes('winmm.dll') || names.includes('d3d9.dll'))) {
+      // Fresh install: ReShade writes ReShade.ini on the first game start. The
+      // model can already be chosen - set() creates the file with our section,
+      // ReShade keeps it and fills in its own defaults.
+      found.push(path.join(dir, 'ReShade.ini'));
     }
     if (depth >= maxDepth) return;
     for (const e of entries) {
@@ -40,6 +46,7 @@ function findInis(gameDir, maxDepth = 6) {
 }
 
 function readValue(file) {
+  if (!fs.existsSync(file)) return null;
   const raw = getIni(fs.readFileSync(file, 'utf8'), SECTION, 'NRPreset');
   const n = raw === null ? null : parseInt(raw, 10);
   return Number.isFinite(n) ? n : null;
@@ -63,7 +70,7 @@ function set(gameDir, value) {
   const files = findInis(gameDir);
   if (!files.length) return { ok: false, message: 'No RenoDX settings in this game - install DLSS 5 first.' };
   for (const file of files) {
-    const text = fs.readFileSync(file, 'utf8');
+    const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     const next = setIni(text, SECTION, 'NRPreset', String(n));
     if (next !== text) {
       try { fs.chmodSync(file, 0o666); } catch {}
