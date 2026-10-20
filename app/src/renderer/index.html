@@ -36,6 +36,12 @@
   </style>
 </head>
 <body>
+  <div class="update-banner hidden" id="updateBanner" role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5"/><path d="M4 17v2.5h16V17"/></svg>
+    <div class="ub-text"><b id="updateBannerTitle"></b><span id="updateBannerText"></span></div>
+    <a class="ub-go" id="updateBannerGo" href="https://github.com/machiavelli31/DLSS-AiO-Swapper/releases/latest" data-project="releases"></a>
+    <button class="ub-later" id="updateBannerLater" type="button"></button>
+  </div>
   <div class="shell">
     <!-- ---------------- sidebar ---------------- -->
     <aside class="sidebar">

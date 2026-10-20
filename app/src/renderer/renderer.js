@@ -180,6 +180,7 @@ function cardMarkup(g) {
         <button class="tool" data-act="hide" title="${esc(t('menuHide'))}">✕</button>
       </div>
       <span class="badge${dx12 ? ' dx12' : ''}">${esc(api)}</span>
+      <button class="card-play" data-act="play" title="${esc(t('playGame', g.name))}" aria-label="${esc(t('playGame', g.name))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button>
       ${poster}
       <div class="name">${esc(g.name)}</div>
     </article>`;
@@ -858,6 +859,29 @@ async function showUpdateNotice() {
   link.textContent = t('updateAvailable', answer.latest);
   link.classList.remove('muted');
   link.classList.remove('hidden');
+  showUpdateBanner(answer);
+}
+
+// The About link alone was too easy to miss, so a newer release also gets a
+// banner at the top of the window. "Later" hides it for this version only;
+// the next release shows it again.
+function showUpdateBanner(answer) {
+  const banner = $('updateBanner');
+  if (!banner) return;
+  // Live in the top bar (next to theme/language), so it never covers content.
+  const bar = document.querySelector('.main .toolbar');
+  if (bar && banner.parentElement !== bar) bar.prepend(banner);
+  const key = 'aio.updateLater';
+  try { if (localStorage.getItem(key) === answer.latest) return; } catch {}
+  $('updateBannerTitle').textContent = t('updateBannerTitle', answer.latest);
+  $('updateBannerText').textContent = t('updateBannerText', answer.current);
+  $('updateBannerGo').textContent = t('updateBannerAction');
+  $('updateBannerLater').textContent = t('updateBannerLater');
+  $('updateBannerLater').onclick = () => {
+    try { localStorage.setItem(key, answer.latest); } catch {}
+    banner.classList.add('hidden');
+  };
+  banner.classList.remove('hidden');
 }
 
 function jobLog(line) {
@@ -913,7 +937,7 @@ async function openSheet(dir, keepLog = false) {
       <div class="head">
         <div class="cover">${cover ? `<img src="${cover}" alt="">` : esc(initials(g.name))}</div>
         <div class="who">
-          <h3>${esc(info ? info.name : g.name)}</h3>
+          <div class="title-row"><h3>${esc(info ? info.name : g.name)}</h3><button class="btn-play" id="sheetPlay" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg><span>${esc(t('play'))}</span></button></div>
           <div class="meta">${[g.launcher, info && info.released, info && info.genres && info.genres.join(', '),
               info && info.rating ? info.rating + '/100' : null].filter(Boolean).map(esc).join(' · ')}</div>
           <div class="path">${esc(g.dir)}</div>
@@ -951,6 +975,7 @@ async function openSheet(dir, keepLog = false) {
 
   if (modernSheet) window.theme2.wireSheet(sheetContext);
   $('sheetClose').onclick = closeSheet;
+  if ($('sheetPlay')) $('sheetPlay').onclick = () => playGame(dir, $('sheetPlay'));
   $('copyJob').onclick = () => copyText([sheetGame.name, sheetGame.dir, '', ...jobLines].join('\n'));
   // Everything an issue report needs, in one file, instead of four asked for
   // one at a time.
@@ -1625,7 +1650,27 @@ $('copyHistory').onclick = () => copyText(historyText());
 const cardActionsBusy = new Set();
 let contextMenuOpen = false;
 
+// Starts the game the way its launcher would (Steam/Epic link, otherwise the
+// game's own exe). Nothing is installed or changed. Not while an install or
+// restore is running, because the files are in flux.
+async function playGame(dir, button) {
+  const game = state.games.find(g => g.dir === dir);
+  if (!game) return;
+  if (jobRunning) { log(t('playBusy')); return; }
+  if (button) button.disabled = true;
+  try {
+    const answer = await window.lab.launchGame(dir);
+    if (answer?.ok) log(t('playStarted', game.name));
+    else log(t('playFailed', game.name, answer?.message || ''));
+  } catch (error) {
+    log(t('playFailed', game.name, error.message));
+  } finally {
+    if (button) setTimeout(() => { button.disabled = false; }, 2500);
+  }
+}
+
 async function performGameAction(action, dir) {
+  if (action === 'play') return playGame(dir);
   if (!['details', 'open', 'copy', 'restore', 'scan', 'poster', 'hide'].includes(action)) return;
   const game = state.games.find(g => g.dir === dir);
   if (!game) return;
@@ -1822,7 +1867,7 @@ $('groups').onclick = async (event) => {
   const card = event.target.closest('.card');
   if (!card) return;
   const dir = card.dataset.dir;
-  const act = event.target.closest('.tool')?.dataset.act;
+  const act = event.target.closest('.tool, .card-play')?.dataset.act;
 
   await performGameAction(act || 'details', dir);
 };

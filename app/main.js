@@ -515,6 +515,11 @@ ipcMain.handle('launch-game', async (_event, dir) => {
     await shell.openExternal(`steam://rungameid/${String(known.appid).replace(/[^0-9]/g, '')}`);
     return { ok: true, via: 'steam' };
   }
+  // Epic games need their launcher for login/DRM; its own link starts them.
+  if (known && known.launcher === 'Epic Games' && known.storeId && /^[A-Za-z0-9._-]+$/.test(known.storeId)) {
+    await shell.openExternal(`com.epicgames.launcher://apps/${encodeURIComponent(known.storeId)}?action=launch&silent=true`);
+    return { ok: true, via: 'epic' };
+  }
   try {
     const scan = await scanGame(dir);
     const exe = scan.chosen && scan.chosen.path;
