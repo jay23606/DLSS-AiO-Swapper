@@ -68,7 +68,7 @@ No ReShade installer to click through, no add-on folders, no INI editing – and
 ### DLSS 5 Neural Rendering
 - **One click per game** – installs DLSS 5 into games with DLSS (via RenoDX or OptiScaler) and even into games **without** DLSS (via DLSS5-Feeder, including Vulkan and older DirectX titles).
 - **The new Preset B (October 2026)** – NVIDIA's reworked DLSS 5 model (announced the week of October 13, 2026; runtime `nvngx_dlssnr.dll` 310.9.16 since October 16, 2026): about **24 % smaller, ~20 % less VRAM at 4K and up to twice as fast**. In my own tests: **+10–15 % FPS at 1440p**, and considerably more depending on game and resolution.
-- **Choose the model per game** – Preset **B** (new, fast) or Preset **A** (the older September model). Verified with NVIDIA's NGX logs, not guessed.
+- **Choose the model per game** – Preset **B** (new, fast) or Preset **A** (the older September model), on the RenoDX/Feeder route (`NRPreset` in ReShade.ini) **and** on the OptiScaler route (`Preset` under `[DlssNr]` in OptiScaler.ini). Verified with NVIDIA's NGX logs, not guessed – in The Witcher 3 the NR pass took 5.9 ms with A and 3.4 ms with B.
 - **Backup & undo** – everything is backed up before a change; *"Restore originals"* puts the game back exactly as it was.
 
 ### NVIDIA DLSS per game – right in the app

@@ -7,11 +7,17 @@
 //   2 -> model B (hnet-crazy-cuckoo-small-fp8, October, faster)
 //   0 -> "not available" in 310.9.16, the DLL falls back to its default B
 // Verified with NGX logging in The Witcher 3 (2026-10-19).
+// OptiScaler's DLSS-NR build passes the same NGX parameter
+// (DLSSNR.Hint.Render.Preset) from [DlssNr] Preset in OptiScaler.ini, so the
+// same numbers apply there ("auto" = 0 = the DLL's default B). Verified with
+// NGX logging in The Witcher 3 (2026-10-21): Preset=1 -> CC_Control_..._2026_07_04
+// (A, 5.9 ms), 0/auto -> hnet-crazy-cuckoo-small-fp8 (B, 3.4 ms).
 const fs = require('fs');
 const path = require('path');
 const { getIni, setIni } = require('./feeder-config');
 
 const SECTION = 'RenoDX.DLSS5';
+const OPTI_SECTION = 'DlssNr';
 const SKIP = /^(_hermes_|_dlss5_backup|reshade-shaders|node_modules|\.git)/i;
 const VALUES = new Set([1, 2]);
 
@@ -24,7 +30,15 @@ function findInis(gameDir, maxDepth = 6) {
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     const names = entries.map((e) => e.name.toLowerCase());
     const hasConsumer = names.some((n) => /^renodx-dlss5.*\.addon(64|32)?$/.test(n));
-    if (names.includes('reshade.ini')) {
+    let opti = false;
+    if (names.includes('optiscaler.ini') && (names.includes('nvngx.dll_dlssnr.dll') || names.includes('optiscaler.dll'))) {
+      const file = path.join(dir, entries.find((e) => e.name.toLowerCase() === 'optiscaler.ini').name);
+      let text = '';
+      try { text = fs.readFileSync(file, 'utf8'); } catch {}
+      if (/^\s*\[DlssNr\]\s*$/im.test(text)) { found.push(file); opti = true; }
+    }
+    // A leftover ReShade.ini beside OptiScaler (no RenoDX add-on) is not read by anything.
+    if (opti && !hasConsumer) { /* skip */ } else if (names.includes('reshade.ini')) {
       const file = path.join(dir, 'ReShade.ini');
       let text = '';
       try { text = fs.readFileSync(file, 'utf8'); } catch {}
@@ -45,9 +59,12 @@ function findInis(gameDir, maxDepth = 6) {
   return found;
 }
 
+const isOpti = (file) => /optiscaler\.ini$/i.test(file);
+const keyFor = (file) => (isOpti(file) ? [OPTI_SECTION, 'Preset'] : [SECTION, 'NRPreset']);
+
 function readValue(file) {
   if (!fs.existsSync(file)) return null;
-  const raw = getIni(fs.readFileSync(file, 'utf8'), SECTION, 'NRPreset');
+  const raw = getIni(fs.readFileSync(file, 'utf8'), ...keyFor(file));
   const n = raw === null ? null : parseInt(raw, 10);
   return Number.isFinite(n) ? n : null;
 }
@@ -60,7 +77,8 @@ function get(gameDir) {
     ok: true, found: true,
     files: files.map((f) => path.relative(path.resolve(gameDir), f)),
     value,
-    model: value === 1 ? 'A' : 'B'      // 0/unset falls back to B in 310.9.16
+    via: isOpti(files[0]) ? 'optiscaler' : 'renodx',
+    model: value === 1 ? 'A' : 'B'      // 0/unset/auto falls back to B in 310.9.16
   };
 }
 
@@ -68,10 +86,11 @@ function set(gameDir, value) {
   const n = Number(value);
   if (!VALUES.has(n)) throw new Error('Model must be A (1) or B (2)');
   const files = findInis(gameDir);
-  if (!files.length) return { ok: false, message: 'No RenoDX settings in this game - install DLSS 5 first.' };
+  if (!files.length) return { ok: false, message: 'No RenoDX or OptiScaler DLSS 5 settings in this game - install DLSS 5 first.' };
   for (const file of files) {
     const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-    const next = setIni(text, SECTION, 'NRPreset', String(n));
+    const [section, key] = keyFor(file);
+    const next = setIni(text, section, key, String(n));
     if (next !== text) {
       try { fs.chmodSync(file, 0o666); } catch {}
       fs.writeFileSync(file, next, 'utf8');

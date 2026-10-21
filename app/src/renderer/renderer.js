@@ -1182,7 +1182,7 @@ function wireNrPreset(d, pick) {
     modelSel.value = r.value === 1 ? '1' : '2';
     modelSel.disabled = false;
     const auto = r.value === null || r.value === 0 ? t('nrAuto') : '';
-    modelNote.innerHTML = `<span>${esc(t('nrNextStart', { model: r.model, auto, files: r.files.join(', ') }))}</span><span>${nrHint}</span>`;
+    modelNote.innerHTML = `<span>${esc(t('nrNextStart', { model: r.model, auto, via: r.via, files: r.files.join(', ') }))}</span><span>${nrHint}</span>`;
   };
   if (gameDir && window.lab.nrModelGet) {
     window.lab.nrModelGet(gameDir).then((r) => { if (box.isConnected) showModel(r); })
