@@ -1604,7 +1604,7 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
   // The ReShade and Feeder routes both drive the RenoDX neural consumer, which
   // upstream has measured faulting inside NVIDIA's runtime on a known driver
   // range. Say so before the work starts; it never stops the install.
-  if (route === 'native' || route === 'feeder') {
+  if (route === 'native' || route === 'feeder' || route === 'combo') {
     // Advice only: nothing about reading the driver may decide whether an
     // install runs.
     try {

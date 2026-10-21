@@ -55,7 +55,8 @@ Pick a game, press **Install** – the app works out the right route for that ga
 | What | What it does |
 |---|---|
 | **ReShade** (add-on build) | the loader the DLSS 5 add-ons run in – installed and configured for the game's API |
-| **RenoDX DLSS5** (+ multipass build) | runs DLSS 5 Neural Rendering in games that already have DLSS |
+| **RenoDX DLSS5** (lecram) | runs DLSS 5 Neural Rendering in games that already have DLSS |
+| **RenoDX DLSS Tool** (ShortFuse, multipass) | DLSS 5 with or without the game's own DLSS, 1–10 passes – or *experimental*: **lecram + ShortFuse together** (both run, `ForeignNr=observe`) |
 | **DLSS5-Feeder** | brings DLSS 5 to games **without** DLSS (DirectX 9–12, Vulkan, OpenGL, even 32-bit and emulators) |
 | **OptiScaler** (DLSS-NR builds) | alternative route that replaces the game's upscaler and runs DLSS 5 on top – also for FSR/XeSS games |
 | **dgVoodoo 2** | wrapper for old DirectX 8/9 games so they can use the modern route |
@@ -124,6 +125,10 @@ On a game's page (for games set up with ReShade):
 - **Extra ReShade add-ons** – add any `.addon64`/`.addon32` you trust; it is scanned by Microsoft Defender first.
 
 Both are recorded in the game's backup, so **Restore** removes them like everything else. Files you placed by hand are never touched.
+
+## Known issue: NVIDIA driver 621.01
+
+Since driver **621.01** lecram's DLSS 5 add-on (8.5 and 10.8) can crash games right at start (seen in The Witcher 3: access violation inside `renodx-dlss5.addon64` while reading NVIDIA's `nvngx_dlssnr.dll`). **617.42** works. Fix: clean-install 617.42 and turn off automatic driver updates in the NVIDIA App until the add-on is updated.
 
 ## Own add-on builds (paid lecram / ShortFuse builds)
 

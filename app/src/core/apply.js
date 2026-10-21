@@ -678,8 +678,9 @@ const RENODX_CONSUMER = /^renodx-dlss.*\.addon64$/i;
 async function setAsideRivalConsumers(manifest, gameDir, dir, keep, log) {
   let names = [];
   try { names = fs.readdirSync(dir); } catch { return; }
+  const kept = new Set([].concat(keep).map((name) => String(name).toLowerCase()));
   for (const name of names) {
-    if (!RENODX_CONSUMER.test(name) || name.toLowerCase() === keep.toLowerCase()) continue;
+    if (!RENODX_CONSUMER.test(name) || kept.has(name.toLowerCase())) continue;
     const file = path.join(dir, name);
     const ours = wasAdded(manifest, path.relative(gameDir, file));
     const rel = await trackBeforeWrite(manifest, gameDir, file, { kind: 'addon' });
@@ -733,13 +734,20 @@ async function applySwap(config, onLog) {
   // with a different add-on and two settings of its own. It is not a variant
   // of the Feeder: the Feeder looks for a consumer named renodx-dlss5*,
   // deep-fried-chicken or alexs-toolkit, and this one is none of those.
-  const multipass = config.route === 'renodx' &&
+  // Experimental "combo" route: Lecram's DLSS 5 add-on AND ShortFuse's DLSS
+  // Tool in one game. They register under different names ("DLSS 5 Neural
+  // Rendering" / "RenoDX DLSS"), so ReShade loads both; Lecram stands down
+  // when it sees a second NR producer unless ForeignNr=observe is set, which
+  // this route writes. Both then run NR on the frame (about twice the cost).
+  const combo = config.route === 'combo';
+  const multipass = (config.route === 'renodx' || combo) &&
     Boolean(source.feeder && source.feeder.multipassAddon) && fs.existsSync(source.feeder.multipassAddon);
-  if (config.route === 'renodx' && !multipass) throw fail('errMultipassMissing');
+  if ((config.route === 'renodx' || combo) && !multipass) throw fail('errMultipassMissing');
+  if (combo && !(source.addon && fs.existsSync(source.addon))) throw fail('errMultipassMissing');
 
   const scan = await scanGame(gameDir);
   const manifest = beginManifest(gameDir, exePath, api);
-  manifest.route = multipass ? 'renodx' : 'native';
+  manifest.route = combo ? 'combo' : multipass ? 'renodx' : 'native';
   manifest.game.apiLabel = config.apiLabel;
   const setup = setupRunner || runSetup;
 
@@ -829,10 +837,14 @@ async function applySwap(config, onLog) {
   }
 
   // 3) The RenoDX add-on itself - and no other beside it.
-  const addonSource = multipass ? source.feeder.multipassAddon : source.addon;
+  const addonSource = multipass && !combo ? source.feeder.multipassAddon : source.addon;
   const addonName = addonSource ? path.basename(addonSource) : null;
-  if (addonName) await setAsideRivalConsumers(manifest, gameDir, exeDir, addonName, log);
-  if (addonSource) {
+  const secondSource = combo ? source.feeder.multipassAddon : null;
+  const secondName = secondSource ? path.basename(secondSource) : null;
+  if (addonName) await setAsideRivalConsumers(manifest, gameDir, exeDir, [addonName, secondName].filter(Boolean), log);
+  for (const [src, name] of [[addonSource, addonName], [secondSource, secondName]]) {
+    if (!src) continue;
+    const addonSource = src, addonName = name;
     const dest = path.join(exeDir, addonName);
     const rel = path.relative(gameDir, dest);
     if (fs.existsSync(dest)) {
@@ -958,9 +970,21 @@ async function applySwap(config, onLog) {
   // The file enabled is the file installed. This used to name source.addon,
   // which on the multipass route is not the add-on that was copied.
   if (addonName) await enableAddonInIni(exeDir, addonName, log, gameDir, manifest);
+  if (secondName) await enableAddonInIni(exeDir, secondName, log, gameDir, manifest);
+  // Combo: keep Lecram running next to the DLSS Tool. Only this one key is
+  // written; ReShade.ini may not exist before the first start, then it is
+  // created with just this section and ReShade fills in the rest (Restore
+  // removes it again because it is tracked as config).
+  if (combo) {
+    const ini = path.join(exeDir, 'ReShade.ini');
+    const text = fs.existsSync(ini) ? fs.readFileSync(ini, 'utf8') : '';
+    const next = feederConfig.setIni(text, 'RenoDX.DLSS5', 'ForeignNr', 'observe');
+    if (next !== text) await writeTracked(manifest, gameDir, ini, next, { kind: 'config' });
+    log('comboNext');
+  }
   // The multipass tool's settings are not on ReShade's Home tab, where "No
   // effect files found" sends people looking in the wrong place (#336).
-  if (multipass) log('multipassNext', { dlss: existing.some((file) => /^nvngx_dlss\.dll$/i.test(file.name)) ? 'yes' : 'no' });
+  else if (multipass) log('multipassNext', { dlss: existing.some((file) => /^nvngx_dlss\.dll$/i.test(file.name)) ? 'yes' : 'no' });
 
   await saveActiveManifest(gameDir, manifest);
 

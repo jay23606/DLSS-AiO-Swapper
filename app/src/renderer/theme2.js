@@ -326,9 +326,9 @@
     const summary = art && art.summary ? art.summary : '';
     const api = pick ? selectedApi(pick, dir) : null;
     const route = pick ? selectedRoute(d, pick, dir) : null;
-    const routeName = route === 'optiscaler' ? 'OptiScaler' : route === 'renodx' ? 'RenoDX'
+    const routeName = route === 'optiscaler' ? 'OptiScaler' : route === 'combo' ? 'Lecram + ShortFuse' : route === 'renodx' ? 'RenoDX'
       : route === 'feeder' ? 'Feeder' : route === 'native' ? 'Native' : '—';
-    const backend = d.installedRoute === 'optiscaler' ? 'OptiScaler DLSS-NR' : d.installedRoute ? 'ReShade' : t('none');
+    const backend = ({ optiscaler: 'OptiScaler DLSS-NR', native: 'ReShade · Lecram', feeder: 'ReShade · Lecram + Feeder', renodx: 'ReShade · ShortFuse multipass', combo: 'ReShade · Lecram + ShortFuse' }[d.installedRoute] || (d.installedRoute ? 'ReShade' : t('none')));
     const size = pick && pick.size ? `${Math.round(pick.size / 1048576)} MB` : null;
     const exeName = pick ? pick.rel.split(/[\\/]/).pop() : null;
     const exeMeta = [api && api.label, pick && pick.bitness ? `${pick.bitness}-bit` : null, size].filter(Boolean).join(' — ');

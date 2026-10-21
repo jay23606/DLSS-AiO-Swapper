@@ -43,6 +43,9 @@
     // the reason this route exists. D3D9 goes through dgVoodoo here and is a
     // separate question. 32-bit is out: the add-on is 64-bit only.
     if (target.bitness === 64) routes.push('renodx');
+    // Experimental: Lecram + ShortFuse together, only where Lecram's own route
+    // (game with DLSS, DX12, 64-bit) is offered. Never recommended.
+    if (routes.includes('native') && target.bitness === 64) routes.push('combo');
     return routes;
   }
   function recommendedRoute(scan, target = scan.chosen) {

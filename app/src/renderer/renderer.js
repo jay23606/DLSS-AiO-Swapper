@@ -333,7 +333,7 @@ async function renderHistory() {
     : `<div class="pad" style="color:var(--dim);font-size:13.5px">${t('histEmpty')}</div>`;
 }
 
-const historyRoute = row => ({ native: 'ReShade / RenoDX', feeder: 'ReShade / DLSS5-Feeder', optiscaler: 'OptiScaler DLSS-NR' }[row.route] || row.route || '');
+const historyRoute = row => ({ native: 'ReShade / Lecram', feeder: 'ReShade / Lecram + Feeder', renodx: 'ReShade / ShortFuse multipass', combo: 'ReShade / Lecram + ShortFuse (experimental)', optiscaler: 'OptiScaler DLSS-NR' }[row.route] || row.route || '');
 function historyAction(row) {
   if (row.action === 'restore') return t('restored');
   if (row.action === 'recovery') return t('historyRecovered');
@@ -855,10 +855,10 @@ function installOptions(d, pick, dir) {
       ${apiField}
       <label><span>${t('fBackend')}</span><select id="backendChoice" aria-describedby="backendHint">
         <option value="reshade"${opti ? '' : ' selected'}>${t('backendReShade')}</option>
-        <option value="optiscaler"${opti ? ' selected' : ''}${optiReason ? ' disabled' : ''}>OptiScaler DLSS-NR</option>
+        <option value="optiscaler"${opti ? ' selected' : ''}${optiReason ? ' disabled' : ''}>OptiScaler DLSS-NR (no ReShade)</option>
       </select></label>
       ${!opti ? `<label><span>${t('fRoute')}</span><select id="routeChoice">${routes.filter(item => item !== 'optiscaler').map((item) =>
-        `<option value="${item}"${item === route ? ' selected' : ''}>${t(item === 'feeder' ? 'routeFeeder' : item === 'renodx' ? 'routeRenodx' : 'routeNative')}</option>`).join('')}</select></label>
+        `<option value="${item}"${item === route ? ' selected' : ''}>${t(item === 'feeder' ? 'routeFeeder' : item === 'renodx' ? 'routeRenodx' : item === 'combo' ? 'routeCombo' : 'routeNative')}</option>`).join('')}</select></label>
       ` : ''}
       ${!opti && RESHADE_PROXY_APIS.includes(api.api) && api.label !== 'DirectX 12' ? `<label><span>${t('fReshadeFile')}</span><select id="reshadeProxy">
         <option value="dxgi"${pick.reshadeProxy !== 'd3d11' ? ' selected' : ''}>dxgi.dll</option>
@@ -872,6 +872,7 @@ function installOptions(d, pick, dir) {
         ${optiReason ? `<span>${t(optiReason)}</span>` : ''}
         ${route === 'native' ? `<span>${t('nativeEffectsHint')}</span>` : ''}
         ${route === 'renodx' ? `<span>${t('routeRenodxHint')}</span>` : ''}
+        ${route === 'combo' ? `<span>${t('routeComboHint')}</span>` : ''}
         ${!opti && RESHADE_PROXY_APIS.includes(api.api) && pick.reshadeProxy === 'd3d11' ? `<span>${t(api.api === 'dxgi' ? 'reshadeProxyHint' : 'reshadeProxyWrapHint')}</span>` : ''}
         ${opti && (api.api === 'vulkan' || api.label === 'DirectX 11') ? `<span>${t('optiBridgeHint')}</span>` : ''}
         ${opti && api.api === 'vulkan' ? `<span>${t('optiVulkanHint')}</span>` : ''}
@@ -993,7 +994,7 @@ async function openSheet(dir, keepLog = false) {
         ${showExeFact && pick ? spec(t('fExe'), esc(pick.rel.split(/[\/]/).pop()), null, pick.rel) : ''}
         ${pick ? spec(t('fArchitecture'), `${pick.bitness || '?'}-bit`) : ''}
         ${spec(t('fApi'), esc((pick && selectedApi(pick, dir).label) || reasonText(d.reason) || '—'), pick && selectedApi(pick, dir).api === 'dxgi' ? 'on' : 'off')}
-        ${spec(t('installedBackend'), esc(d.installedRoute === 'optiscaler' ? 'OptiScaler DLSS-NR' : d.installedRoute ? 'ReShade' : t('none')), d.installedRoute ? 'on' : 'off')}
+        ${spec(t('installedBackend'), esc({ optiscaler: 'OptiScaler DLSS-NR', native: 'ReShade · Lecram', feeder: 'ReShade · Lecram + Feeder', renodx: 'ReShade · ShortFuse multipass', combo: 'ReShade · Lecram + ShortFuse' }[d.installedRoute] || (d.installedRoute ? 'ReShade' : t('none'))), d.installedRoute ? 'on' : 'off')}
         ${spec('DLSS', pick && selectedRoute(d, pick, dir) === 'optiscaler' ? esc(inGameDlss || t('none')) : dlssValue(inGameDlss, d.newDlss, upToDate))}
         ${d.optiscaler ? spec('OptiScaler', esc(d.optiscaler.installed ? d.optiscaler.version : t('notInstalled')), d.optiscaler.installed ? 'on' : 'off') : ''}
         ${spec(t('fAddon'), esc(d.addon ? t('installed') : t('notPresent')), d.addon ? 'on' : 'off')}
