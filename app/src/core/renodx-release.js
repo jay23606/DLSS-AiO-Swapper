@@ -40,4 +40,12 @@ const FAULTING = Object.freeze({
   '9150097cdee2953cdc9894d2e5606ea5100e6c8f95fc7bb1b407328b4391a07a': '4.55',
   '87aef9ddd937c7241e6bf8d8efea0045d63559135e254c60dab316db3d3a4aee': '4.x'
 });
-module.exports = { CONSUMER, MULTIPASS, FAULTING, faults: (sha256) => Boolean(FAULTING[String(sha256).toLowerCase()]) };
+// Every add-on build this app has shipped as its built-in choice. "Update
+// installed DLSS 5" only swaps files with one of these digests (or an own build
+// imported through the app), never something placed by hand.
+const SHIPPED = Object.freeze([
+  CONSUMER.sha256,
+  MULTIPASS.sha256,
+  '342341f669f1d64e0c70c8593a07a2fab5075e073dfae97c331c9a6776260a0a' // RenoDX DLSS5 6.5.3 (3.0.0 - 3.0.4)
+]);
+module.exports = { CONSUMER, MULTIPASS, FAULTING, SHIPPED, faults: (sha256) => Boolean(FAULTING[String(sha256).toLowerCase()]) };

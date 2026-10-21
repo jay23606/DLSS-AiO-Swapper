@@ -116,6 +116,24 @@ The repository and the installer contain **not a single third-party DLL**. The a
   - **310.9.16 or newer** → contains Preset **A and B** (recommended)
   - **310.8.x** → Preset A only
 
+## HDR mods and extra add-ons per game
+
+On a game's page (for games set up with ReShade):
+
+- **HDR (RenoDX game mod)** – the app looks the game up in RenoDX's official catalogue (240+ games, matched by Steam app ID or name) and installs the matching HDR mod with one click. Every file is checked against the SHA-256 RenoDX publishes on its GitHub release; mods made for another graphics API are flagged. Settings in game with the Home key.
+- **Extra ReShade add-ons** – add any `.addon64`/`.addon32` you trust; it is scanned by Microsoft Defender first.
+
+Both are recorded in the game's backup, so **Restore** removes them like everything else. Files you placed by hand are never touched.
+
+## Own add-on builds (paid lecram / ShortFuse builds)
+
+Newer RenoDX DLSS 5 add-ons are often sold by their authors (lecram's builds on Buy Me a Coffee, ShortFuse's on Patreon). The app never downloads or shares those – but if you bought one, import it once under **Components → Own add-on** (`.addon64` or the `.zip` you got). It is checked (64-bit ReShade add-on, right file name), scanned by Microsoft Defender, copied into the app's folder and from then on used for every install. **Update installed DLSS 5** in the Games tab puts it into all games that already have DLSS 5 – and it only ever replaces files the app put there itself, so a build you placed by hand is never downgraded.
+
+## Feature requests and bugs
+
+- 💡 **Suggest a feature** / 🐞 **Report a bug** – bottom of the sidebar or on *About*. Opens GitHub's form in your browser with the app version filled in; the app itself sends nothing.
+- Vote on what comes next in [Ideas](../../discussions/categories/ideas).
+
 ## Security
 
 After the malware rumours around the discontinued DLSS 5 Swapper, here is exactly what this app does and doesn't do:

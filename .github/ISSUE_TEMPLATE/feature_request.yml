@@ -1,0 +1,30 @@
+name: 💡 Feature request
+description: Suggest something the app should do
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Before posting, have a quick look at [Ideas](https://github.com/machiavelli31/DLSS-AiO-Swapper/discussions/categories/ideas) – if it's already there, an upvote helps more than a duplicate.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like the app to do?
+      placeholder: e.g. "A button that turns DLSS 5 off for all games at once"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help you?
+      placeholder: What are you doing by hand today, or what is missing compared to other tools?
+  - type: input
+    id: games
+    attributes:
+      label: Games it's about (if any)
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: filled in automatically when you open this from the app

@@ -116,3 +116,7 @@ SOFTWARE.
 
 DLSS5-Autopilot downloads third-party components at runtime. Those components
 remain under their own licences.
+
+## RenoDX game mods (HDR)
+
+Downloaded at runtime on request from the official RenoDX snapshot release (https://github.com/clshortfuse/renodx/releases/tag/snapshot) and checked against the SHA-256 GitHub publishes for each file. Not bundled. Each mod is the work of its listed maintainers and subject to the RenoDX license.

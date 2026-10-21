@@ -18,7 +18,7 @@ const { scanGame } = require('./src/core/scan.js');
 const { discover, folder, dedupe, isInside, steam } = require('./src/library');
 const { contextForSteamGame, createSetupRunner } = require('./src/core/proton');
 const art = require('./src/steamart');
-const { backupRoot, saveActiveManifest, writeTracked, makeReShadeConfigWritable } = require('./src/core/apply.js');
+const { backupRoot, saveActiveManifest, writeTracked, makeReShadeConfigWritable, compareVersions, copyTracked } = require('./src/core/apply.js');
 const { scanSource } = require('./src/core/scan.js');
 const pe = require('./src/core/pe.js');
 const { ensureLumenite, ensureDgVoodoo, missingVCRuntime } = require('./src/core/runtime-components.js');
@@ -29,6 +29,9 @@ const componentCode = (error, fallback) => (error && error.code === 'componentRe
 const installRoutes = require('./src/shared/install-routes');
 const renderingApi = require('./src/shared/rendering-api');
 const { projectUrl } = require('./src/core/project-links');
+const customAddons = require('./src/core/custom-addons');
+const renodxHdr = require('./src/core/renodx-hdr');
+const renodxRelease = require('./src/core/renodx-release');
 const optiscaler = require('./src/core/optiscaler');
 const { missingPayload } = require('./src/core/payload-guidance');
 const components = require('./src/core/components');
@@ -200,6 +203,22 @@ function payloadComplete(dir, probe) {
 // which is how the library finds the shipped build in the first place.
 // Not cached: every call re-reads the folders, so a component download or
 // import is picked up immediately.
+// Own add-on builds the person imported (state.customAddons, keyed by file
+// name). Returns name -> path for the ones switched on and still on disk.
+function customAddonState() {
+  const state = loadState();
+  const entries = state.customAddons && typeof state.customAddons === 'object' ? state.customAddons : {};
+  return { state, entries };
+}
+function activeCustomAddons() {
+  const { entries } = customAddonState();
+  const out = {};
+  for (const [name, e] of Object.entries(entries)) {
+    if (e && e.active && typeof e.path === 'string' && fs.existsSync(e.path) && Object.hasOwn(customAddons.NAMES, name)) out[name] = e.path;
+  }
+  return out;
+}
+
 function payload(raw) {
   // First the component-manager folder in userData, then the legacy places:
   // a build that ships a payload as an extra resource, or one beside main.js
@@ -222,6 +241,10 @@ function payload(raw) {
         const base = path.basename(probe.addon).toLowerCase();
         const over = list.find((f) => fs.existsSync(f) && path.basename(f).toLowerCase() === base);
         if (over) probe.addon = over;
+        // An imported own build (Components > Own add-on) wins over both.
+        const own = activeCustomAddons();
+        if (own['renodx-dlss5.addon64']) { probe.addon = own['renodx-dlss5.addon64']; probe.hostAddon = own['renodx-dlss5.addon64']; }
+        if (own['renodx-dlss.addon64']) probe.multipassAddon = own['renodx-dlss.addon64'];
       }
       return { source: probe, reshadeSetup: setup ? path.join(dir, setup) : null };
     }
@@ -883,7 +906,7 @@ ipcMain.handle('reset', () => {
 
 ipcMain.handle('open', (_event, dir) => shell.openPath(dir));
 ipcMain.handle('open-project', async (_event, destination) => {
-  const url = projectUrl(destination);
+  const url = projectUrl(destination, { version: app.getVersion(), windows: `${os.release()} (${os.arch()})` });
   if (!url) return false;
   try { await shell.openExternal(url); return true; } catch { return false; }
 });
@@ -1118,6 +1141,138 @@ ipcMain.handle('components-migrate', (event) => exclusiveMutation(async () => {
   if (!legacy) return { ok: false, code: 'compErrLegacyMissing', params: {}, message: 'No old installation found.' };
   const send = (p) => { try { if (!event.sender.isDestroyed()) event.sender.send('components-progress', p); } catch {} };
   try { return await components.migrate(componentsDir(), legacy, componentOpts(), send); } catch (error) { return componentError(error); }
+}));
+
+ipcMain.handle('custom-addons', () => {
+  const { entries } = customAddonState();
+  return Object.keys(customAddons.NAMES).map((name) => {
+    const e = entries[name];
+    const present = Boolean(e && typeof e.path === 'string' && fs.existsSync(e.path));
+    return { name, label: customAddons.NAMES[name], present, active: Boolean(present && e.active),
+      version: present ? e.version || null : null, sha256: present ? e.sha256 : null, importedAt: present ? e.importedAt : null };
+  });
+});
+ipcMain.handle('custom-addon-import', (_event, arg) => exclusiveMutation(async () => {
+  const request = arg && typeof arg === 'object' ? arg : {};
+  const res = await dialog.showOpenDialog(win, {
+    title: typeof request.title === 'string' ? request.title : 'Import own add-on',
+    properties: ['openFile'],
+    filters: [{ name: 'renodx-dlss5.addon64 / renodx-dlss.addon64 / .zip', extensions: ['addon64', 'zip'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, cancelled: true };
+  try {
+    const got = await customAddons.importFile(app.getPath('userData'), res.filePaths[0]);
+    const { state, entries } = customAddonState();
+    entries[got.name] = { path: got.path, sha256: got.sha256, version: got.version, active: true, importedAt: new Date().toISOString() };
+    state.customAddons = entries;
+    saveState(state);
+    return { ok: true, ...got };
+  } catch (error) { return { ok: false, code: error.code || null, message: error.message, params: error.params || {} }; }
+}));
+ipcMain.handle('custom-addon-use', (_event, name, on) => {
+  const { state, entries } = customAddonState();
+  if (!entries[name]) return { ok: false };
+  entries[name].active = Boolean(on);
+  state.customAddons = entries;
+  saveState(state);
+  return { ok: true };
+});
+ipcMain.handle('custom-addon-remove', (_event, name) => {
+  const { state, entries } = customAddonState();
+  if (!entries[name]) return { ok: false };
+  // The file stays on disk so games that already carry it keep being
+  // recognised as ours; only the choice is forgotten.
+  delete entries[name];
+  state.customAddons = entries;
+  saveState(state);
+  return { ok: true };
+});
+
+// ---- Game page: RenoDX HDR mod and extra ReShade add-ons -------------------
+// Both go beside ReShade in a game this app set up, and both are recorded in
+// the game's manifest, so Restore removes them like everything else.
+const DLSS_ADDONS = new Set(['renodx-dlss5.addon64', 'renodx-dlss.addon64']);
+function reshadeGame(dir) {
+  let manifest = null;
+  try { manifest = backends.readManifest(dir); } catch { return { ok: false, reason: 'hdrNeedsReShade' }; }
+  if (!manifest || !manifest.game || !manifest.game.exe) return { ok: false, reason: 'hdrNeedsReShade' };
+  const exe = journal.safePath(dir, manifest.game.exe);
+  const exeDir = path.dirname(exe);
+  if (!fs.existsSync(path.join(exeDir, 'ReShade.ini'))) return { ok: false, reason: 'hdrNeedsReShade' };
+  let bits = 64;
+  try { bits = pe.getBitness(exe) || 64; } catch { /* default 64 */ }
+  return { ok: true, manifest, exe, exeDir, bits, api: manifest.game.api || null };
+}
+const relKeyOf = (dir, file) => path.relative(dir, file).replace(/\//g, '\\').toLowerCase();
+function addedByUs(manifest, dir, file) {
+  const key = relKeyOf(dir, file);
+  return (manifest.added || []).some((rel) => typeof rel === 'string' && rel.replace(/\//g, '\\').toLowerCase() === key);
+}
+function gameAddons(g, dir) {
+  let files = [];
+  try { files = fs.readdirSync(g.exeDir).filter((f) => /\.addon(32|64)$/i.test(f) && !DLSS_ADDONS.has(f.toLowerCase())); } catch { /* none */ }
+  return files.map((f) => ({ name: f, ours: addedByUs(g.manifest, dir, path.join(g.exeDir, f)) }));
+}
+ipcMain.handle('game-extras', async (_event, dir) => {
+  if (typeof dir !== 'string' || !path.isAbsolute(dir)) return { ok: false };
+  const g = reshadeGame(dir);
+  if (!g.ok) return { ok: false, reason: g.reason };
+  const addons = gameAddons(g, dir);
+  const known = lastGames.find((x) => keyFor(x.dir) === keyFor(dir));
+  let mods = [];
+  let catalogError = null;
+  try {
+    const data = await renodxHdr.catalog(path.join(app.getPath('userData'), 'renodx-hdr'));
+    mods = renodxHdr.modsFor(data, { appid: known && known.appid, name: known ? known.name : path.basename(dir) }).map((mod) => {
+      const artifact = mod.artifacts.find((a) => a.arch === g.bits) || null;
+      const apiMismatch = Boolean(mod.api && g.api && !String(g.api).toLowerCase().includes(String(mod.api).toLowerCase()));
+      const present = artifact && addons.find((a) => a.name.toLowerCase() === artifact.name.toLowerCase());
+      return { ...mod, artifact: artifact && artifact.name, installed: Boolean(present), ours: Boolean(present && present.ours), apiMismatch };
+    });
+  } catch (error) { catalogError = error.code || 'hdrErrOffline'; }
+  return { ok: true, mods, addons, catalogError, bits: g.bits, api: g.api };
+});
+ipcMain.handle('hdr-install', (_event, dir, artifact) => exclusiveMutation(async () => {
+  const g = reshadeGame(dir);
+  if (!g.ok) return { ok: false, code: g.reason };
+  await guards.assertGameClosed(dir, g.exe);
+  const cache = path.join(app.getPath('userData'), 'renodx-hdr');
+  const data = await renodxHdr.catalog(cache);
+  const src = await renodxHdr.download(data, String(artifact), cache);
+  await copyTracked(g.manifest, dir, src, path.join(g.exeDir, path.basename(src)), { kind: 'renodx-hdr' });
+  return { ok: true, name: path.basename(src) };
+}));
+ipcMain.handle('game-addon-add', (_event, dir, title) => exclusiveMutation(async () => {
+  const g = reshadeGame(dir);
+  if (!g.ok) return { ok: false, code: g.reason };
+  const res = await dialog.showOpenDialog(win, { title: typeof title === 'string' ? title : 'Add a ReShade add-on', properties: ['openFile'],
+    filters: [{ name: 'ReShade add-on', extensions: ['addon64', 'addon32', 'addon'] }] });
+  if (res.canceled || !res.filePaths.length) return { ok: false, cancelled: true };
+  const src = res.filePaths[0];
+  const name = path.basename(src);
+  if (DLSS_ADDONS.has(name.toLowerCase())) return { ok: false, code: 'gaErrDlss' };
+  let bits = 0;
+  try { bits = pe.getBitness(src); } catch { /* not a PE file */ }
+  if (!bits) return { ok: false, code: 'gaErrNotAddon' };
+  if (bits !== g.bits) return { ok: false, code: 'gaErrBits', params: { game: g.bits, file: bits } };
+  const scan = await customAddons.defenderScan(src);
+  if (scan.threat) return { ok: false, code: 'caErrThreat', params: { detail: scan.detail || '' } };
+  await guards.assertGameClosed(dir, g.exe);
+  await copyTracked(g.manifest, dir, src, path.join(g.exeDir, name), { kind: 'extra-addon' });
+  return { ok: true, name, scanned: scan.scanned };
+}));
+ipcMain.handle('game-addon-remove', (_event, dir, name) => exclusiveMutation(async () => {
+  const g = reshadeGame(dir);
+  if (!g.ok) return { ok: false, code: g.reason };
+  const file = path.join(g.exeDir, path.basename(String(name)));
+  if (!/\.addon(32|64)?$/i.test(file) || DLSS_ADDONS.has(path.basename(file).toLowerCase())) return { ok: false, code: 'gaErrNotOurs' };
+  if (!addedByUs(g.manifest, dir, file)) return { ok: false, code: 'gaErrNotOurs' };
+  await guards.assertGameClosed(dir, g.exe);
+  const key = relKeyOf(dir, file);
+  g.manifest.added = (g.manifest.added || []).filter((rel) => !(typeof rel === 'string' && rel.replace(/\//g, '\\').toLowerCase() === key));
+  if (fs.existsSync(file)) { await journal.capture(dir, file); fs.unlinkSync(file); }
+  await saveActiveManifest(dir, g.manifest);
+  return { ok: true };
 }));
 
 ipcMain.handle('addons', () => addonLibrary());
@@ -1597,7 +1752,7 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
 // setting (ReShade.ini) alone, and skips a game that is running. Restore keeps
 // working because it removes added files by name.
 function updatableSources() {
-  const chosen = payload(true);
+  const chosen = payload();
   if (!chosen) return null;
   const s = chosen.source;
   const byName = new Map();
@@ -1606,6 +1761,18 @@ function updatableSources() {
   const nr = (s.payload || []).find((f) => f.name.toLowerCase() === 'nvngx_dlssnr.dll');
   if (nr && fs.existsSync(nr.path)) byName.set('nvngx_dlssnr.dll', nr.path);
   return byName;
+}
+// Only files the app itself put there may be swapped: a built-in build it
+// shipped (now or before) or an own build imported through the app. A file
+// someone dropped in by hand - a newer paid build, a test version - is left
+// alone, so the button can never downgrade it. The NR model is only replaced
+// by a newer version, never an older one.
+function replaceable(name, target, src) {
+  if (name === 'nvngx_dlssnr.dll') {
+    try { return compareVersions(pe.getFileVersion(src), pe.getFileVersion(target)) > 0; } catch { return false; }
+  }
+  const known = new Set([...renodxRelease.SHIPPED, ...customAddons.knownHashes(app.getPath('userData'))]);
+  try { return known.has(fileSha(target)); } catch { return false; }
 }
 const fileSha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 function gameUpdates(dir, sources) {
@@ -1623,7 +1790,7 @@ function gameUpdates(dir, sources) {
     try { target = journal.safePath(dir, rel); } catch { continue; }
     if (seen.has(target.toLowerCase()) || !fs.existsSync(target)) continue;
     seen.add(target.toLowerCase());
-    try { if (fileSha(target) !== fileSha(src)) out.push({ rel, src, target }); } catch { /* unreadable: leave it */ }
+    try { if (fileSha(target) !== fileSha(src) && replaceable(path.basename(rel).toLowerCase(), target, src)) out.push({ rel, src, target }); } catch { /* unreadable: leave it */ }
   }
   return out.length ? { manifest, files: out } : null;
 }

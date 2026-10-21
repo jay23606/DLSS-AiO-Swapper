@@ -78,6 +78,10 @@
         </button>
       </nav>
 
+      <div class="side-links">
+        <button class="side-link" data-project="feature"><span aria-hidden="true">💡</span><span data-i18n="linkFeature">Suggest a feature</span></button>
+        <button class="side-link" data-project="bug"><span aria-hidden="true">🐞</span><span data-i18n="linkBug">Report a bug</span></button>
+      </div>
     </aside>
 
     <!-- ---------------- main ---------------- -->
@@ -221,6 +225,13 @@
           <button class="glass-btn sm" id="compMigrate" data-i18n="compMigrate">Take over from old installation</button>
         </div>
         <div class="glass pad"><table class="comp-table" id="compTable"></table></div>
+        <div class="glass pad own-addon" id="ownAddon">
+          <div class="own-head">
+            <div><b data-i18n="caTitle">Own add-on</b><p class="comp-note" data-i18n="caDesc"></p></div>
+            <button class="ghost sm" id="caImport" data-i18n="caImport">Import add-on…</button>
+          </div>
+          <div id="caList"></div>
+        </div>
         <p class="comp-note" data-i18n="compNoteNr"></p>
         <p class="comp-note" id="compVersionsNote"></p>
         <p class="comp-note" id="compActive"></p>
@@ -251,6 +262,11 @@
           <p><span data-i18n="aboutUpdates">Updates and source code:</span> <a href="https://github.com/machiavelli31/DLSS-AiO-Swapper" data-project="repo">github.com/machiavelli31/DLSS-AiO-Swapper</a></p>
           <p><a class="status-update hidden" id="aboutUpdate" href="https://github.com/machiavelli31/DLSS-AiO-Swapper/releases/latest" data-project="releases"></a></p>
           <p class="dim hidden" id="projectLinkError" data-i18n="aboutLinkError">The link could not be opened.</p>
+          <p class="about-links">
+            <button class="glass-btn sm" data-project="feature" data-i18n="linkFeature">Suggest a feature</button>
+            <button class="ghost sm" data-project="ideas" data-i18n="linkIdeas">Vote on ideas</button>
+            <button class="ghost sm" data-project="bug" data-i18n="linkBug">Report a bug</button>
+          </p>
           <p class="dim" data-i18n="aboutMaintained">Maintained by Machiavelli (machiavelli31)</p>
           <p class="dim" style="font-size:11px" data-i18n="aboutLicense">Open source under the MIT license, based on the DLSS 5 Swapper project. Components the app downloads (NVIDIA DLSS, ReShade, RenoDX, DLSS5-Feeder, OptiScaler) are subject to their own licenses.</p>
         </div>

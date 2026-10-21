@@ -1005,6 +1005,8 @@ async function openSheet(dir, keepLog = false) {
       ${d.files.length ? `<div class="filelist" data-title="${esc(t('sheetFiles'))}">${d.files.map((f) =>
         `<div class="filerow"><span class="f">${esc(f.rel)}</span><span class="v">${esc(f.version || '—')}</span></div>`).join('')}</div>` : ''}
 
+      <div class="extras" id="sheetExtras"></div>
+
       <div class="sheet-actions">
         <button class="btn-install" id="doInstall"${d.ok && pick && !pick.installIssue && routesFor(pick).length ? '' : ' disabled'}>${installLabel(d, pick, dir)}</button>
         <button class="btn-restore" id="doRestore"${d.hasBackup ? '' : ' disabled'}>${t('restore')}</button>
@@ -1016,6 +1018,7 @@ async function openSheet(dir, keepLog = false) {
   if (modernSheet) window.theme2.wireSheet(sheetContext);
   $('sheetClose').onclick = closeSheet;
   if ($('sheetPlay')) $('sheetPlay').onclick = () => playGame(dir, $('sheetPlay'));
+  renderExtras(dir);
   $('copyJob').onclick = () => copyText([sheetGame.name, sheetGame.dir, '', ...jobLines].join('\n'));
   // Everything an issue report needs, in one file, instead of four asked for
   // one at a time.
@@ -1404,6 +1407,51 @@ function wireComponents() {
   $('compRecheck').onclick = () => renderComponents(true);
   $('compMigrate').onclick = () => compMigrate();
   $('compBannerOpen').onclick = () => show('components');
+  if ($('caImport')) $('caImport').onclick = () => customAddonImport();
+  if ($('caList')) $('caList').onclick = (e) => {
+    const b = e.target.closest('[data-ca-act]');
+    if (b) customAddonAction(b.dataset.caAct, b.dataset.caName);
+  };
+  renderCustomAddons();
+}
+
+// Own add-on builds (a purchased lecram build, a ShortFuse Patreon build):
+// imported once, then used by every install and by "Update installed DLSS 5".
+async function renderCustomAddons() {
+  const box = $('caList');
+  if (!box || !window.lab.customAddons) return;
+  let rows = [];
+  try { rows = await window.lab.customAddons(); } catch { return; }
+  const present = rows.filter((r) => r.present);
+  box.innerHTML = present.length ? present.map((r) => `
+    <div class="own-row${r.active ? ' on' : ''}">
+      <div class="own-info"><b>${esc(r.label)}</b>
+        <span>${esc(r.name)}${r.version ? ' · v' + esc(r.version) : ''} · SHA-256 ${esc(String(r.sha256).slice(0, 12))}…</span>
+        <span class="own-state">${esc(t(r.active ? 'caActive' : 'caInactive'))}</span></div>
+      <div class="own-acts">
+        <button class="${r.active ? 'ghost' : 'glass-btn'} sm" data-ca-act="${r.active ? 'off' : 'on'}" data-ca-name="${esc(r.name)}">${esc(t(r.active ? 'caUseBuiltin' : 'caUseOwn'))}</button>
+        <button class="ghost sm" data-ca-act="remove" data-ca-name="${esc(r.name)}">${esc(t('caRemove'))}</button>
+      </div>
+    </div>`).join('') : `<p class="comp-note">${esc(t('caNone'))}</p>`;
+}
+async function customAddonImport() {
+  if (jobRunning) return;
+  const answer = await window.lab.customAddonImport({ title: t('caImport') });
+  if (!answer || answer.cancelled) return;
+  if (!answer.ok) { log(t('caFailed', answer.code ? t(answer.code, answer.params || {}) : answer.message)); return; }
+  log(t('caImported', answer.name, answer.version || '?', answer.scanned));
+  await renderCustomAddons();
+  refreshUpdateAll();
+}
+async function customAddonAction(act, name) {
+  if (act === 'remove') {
+    if (!await ask({ icon: 'question', title: t('caRemoveTitle'), body: t('caRemoveBody'), confirm: t('caRemove'), cancel: t('cancel') })) return;
+    await window.lab.customAddonRemove(name);
+  } else {
+    await window.lab.customAddonUse(name, act === 'on');
+  }
+  await renderCustomAddons();
+  refreshUpdateAll();
 }
 
 async function compBusy(work) {
@@ -1713,6 +1761,72 @@ $('copyHistory').onclick = () => copyText(historyText());
 
 const cardActionsBusy = new Set();
 let contextMenuOpen = false;
+
+// HDR (RenoDX game mod from RenoDX's own catalogue) and extra ReShade add-ons
+// for a game this app set up with ReShade. Both are tracked in the game's
+// backup, so Restore removes them too.
+async function renderExtras(dir) {
+  const box = $('sheetExtras');
+  if (!box || !window.lab.gameExtras) return;
+  box.innerHTML = '';
+  let info = null;
+  try { info = await window.lab.gameExtras(dir); } catch { return; }
+  if (!$('sheetExtras') || sheetGame?.dir !== dir) return;
+  if (!info || !info.ok) {
+    box.innerHTML = `<div class="extras-card"><b>${esc(t('hdrTitle'))}</b><p class="dim">${esc(t('hdrNeedsReShade'))}</p></div>`;
+    return;
+  }
+  const mods = info.mods || [];
+  const hdrHtml = info.catalogError ? `<p class="dim">${esc(t('hdrOffline'))}</p>`
+    : !mods.length ? `<p class="dim">${esc(t('hdrNone'))}</p>`
+    : mods.map((m) => `
+      <div class="extra-row${m.installed ? ' on' : ''}">
+        <div class="extra-info"><b>${esc(m.title)}${m.variant ? ' · ' + esc(m.variant) : ''}</b>
+          <span>${esc(t('hdrBy', (m.maintainers || []).join(', ') || '?'))}${m.status ? ' · ' + esc(m.status) : ''}${m.installed ? ' · ' + esc(t('hdrInstalled')) : ''}</span>
+          ${(m.notes || []).map((n) => `<span class="extra-note">${esc(n)}</span>`).join('')}
+          ${m.apiMismatch ? `<span class="extra-warn">${esc(t('hdrApiMismatch', m.api))}</span>` : ''}
+          ${!m.artifact ? `<span class="extra-warn">${esc(t('hdrNoArch', info.bits))}</span>` : ''}</div>
+        <div class="extra-acts">${m.installed
+          ? (m.ours ? `<button class="ghost sm" data-x-act="remove" data-x-name="${esc(m.artifact)}">${esc(t('hdrRemove'))}</button>` : `<span class="dim">${esc(t('hdrYours'))}</span>`)
+          : m.artifact ? `<button class="glass-btn sm" data-x-act="hdr" data-x-name="${esc(m.artifact)}">${esc(t('hdrInstall'))}</button>` : ''}</div>
+      </div>`).join('');
+  const hdrNames = new Set(mods.map((m) => String(m.artifact || '').toLowerCase()));
+  const others = (info.addons || []).filter((a) => !hdrNames.has(a.name.toLowerCase()));
+  const addHtml = others.map((a) => `
+      <div class="extra-row on"><div class="extra-info"><b>${esc(a.name)}</b><span>${esc(t(a.ours ? 'gaOurs' : 'gaForeign'))}</span></div>
+        <div class="extra-acts">${a.ours ? `<button class="ghost sm" data-x-act="remove" data-x-name="${esc(a.name)}">${esc(t('hdrRemove'))}</button>` : ''}</div></div>`).join('');
+  box.innerHTML = `
+    <div class="extras-card">
+      <div class="extras-head"><b>${esc(t('hdrTitle'))}</b><span class="dim">${esc(t('hdrHint'))}</span></div>
+      ${hdrHtml}
+      <div class="extras-head sub"><b>${esc(t('gaTitle'))}</b>
+        <button class="ghost sm" data-x-act="add">${esc(t('gaAdd'))}</button></div>
+      ${addHtml || `<p class="dim">${esc(t('gaNone'))}</p>`}
+    </div>`;
+  box.onclick = (e) => {
+    const b = e.target.closest('[data-x-act]');
+    if (b) extrasAction(dir, b.dataset.xAct, b.dataset.xName);
+  };
+}
+async function extrasAction(dir, act, name) {
+  if (jobRunning) return;
+  const box = $('sheetExtras');
+  box?.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  let answer = null;
+  try {
+    if (act === 'hdr') { log(t('hdrDownloading', name)); answer = await window.lab.hdrInstall(dir, name); }
+    else if (act === 'add') answer = await window.lab.gameAddonAdd(dir, t('gaAdd'));
+    else if (act === 'remove') answer = await window.lab.gameAddonRemove(dir, name);
+  } catch (error) { answer = { ok: false, message: error.message }; }
+  if (answer && answer.ok) {
+    if (act === 'hdr') log(t('hdrDone', answer.name));
+    else if (act === 'add') log(t('gaDone', answer.name));
+    else log(t('gaRemoved', name));
+  } else if (answer && !answer.cancelled) {
+    log(t('extrasFailed', answer.code ? t(answer.code, answer.params || {}) : (answer.message || '?')));
+  }
+  renderExtras(dir);
+}
 
 // Starts the game the way its launcher would (Steam/Epic link, otherwise the
 // game's own exe). Nothing is installed or changed. Not while an install or

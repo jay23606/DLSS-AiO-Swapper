@@ -1,0 +1,39 @@
+name: 🐞 Bug report
+description: Something doesn't work
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The fastest way to a fix: on the game's page in the app click **Save diagnostics** and attach the file here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      placeholder: What did you click, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game and store
+      placeholder: e.g. Cyberpunk 2077 (Steam)
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and NVIDIA driver
+      placeholder: e.g. RTX 5080, 617.14
+  - type: input
+    id: version
+    attributes:
+      label: App version
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostics file or ReShade.log
+      description: Drag the file from "Save diagnostics" in here.

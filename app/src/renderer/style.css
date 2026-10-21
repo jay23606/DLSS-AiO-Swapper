@@ -1394,3 +1394,33 @@ body { cursor: default; }
   0%, 100% { box-shadow: 0 0 0 rgba(118, 185, 0, 0); background: transparent; }
   50% { box-shadow: 0 0 16px rgba(118, 185, 0, .35), inset 0 0 12px rgba(118, 185, 0, .12); background: rgba(118, 185, 0, .08); }
 }
+
+/* Components > Own add-on */
+.own-addon { margin-top: 14px; }
+.own-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.own-head p { margin: 4px 0 0; max-width: 720px; }
+.own-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--stroke); }
+.own-row.on { border-color: rgba(118, 185, 0, .6); box-shadow: inset 0 0 14px rgba(118, 185, 0, .1); }
+.own-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.own-info span { font-size: 12px; color: var(--dim); }
+.own-row.on .own-state { color: #76b900; font-weight: 600; }
+.own-acts { display: flex; gap: 8px; flex: none; }
+/* Feature wish / bug report: bottom of the sidebar and on About. */
+.side-links { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; }
+.side-link { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; border: 0; background: transparent; color: var(--dim); font-size: 12.5px; cursor: pointer; text-align: start; }
+.side-link:hover { background: var(--glass); color: var(--text); }
+.about-links { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Game page: HDR mod + extra add-ons */
+.extras { margin: 16px 0 6px; }
+.extras-card { border: 1px solid var(--stroke); border-radius: 14px; padding: 12px 14px; }
+.extras-card p { margin: 6px 0 2px; font-size: 12.5px; }
+.extras-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.extras-head .dim { font-size: 11.5px; }
+.extras-head.sub { margin-top: 14px; justify-content: space-between; align-items: center; }
+.extra-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--glass); }
+.extra-row.on { box-shadow: inset 0 0 0 1px rgba(118, 185, 0, .45); }
+.extra-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.extra-info span { font-size: 11.5px; color: var(--dim); }
+.extra-info .extra-warn { color: #e0a33a; }
+.extra-acts { flex: none; }
