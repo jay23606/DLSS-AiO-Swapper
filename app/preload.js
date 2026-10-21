@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('lab', {
   setSkin: (skin) => ipcRenderer.invoke('set-skin', skin),
   setRail: (rail) => ipcRenderer.invoke('set-rail', rail),
   launchGame: (dir) => ipcRenderer.invoke('launch-game', dir),
+  updateAllGames: (dryRun) => ipcRenderer.invoke('update-all-games', dryRun),
   driverNeuralFault: () => ipcRenderer.invoke('driver-neural-fault'),
   optiscalerBuilds: (dir) => ipcRenderer.invoke('optiscaler-builds', dir),
   setOptiscalerBuild: (dir, version) => ipcRenderer.invoke('set-optiscaler-build', dir, version),

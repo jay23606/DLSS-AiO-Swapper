@@ -11,7 +11,7 @@ before use (`src/core/components.js`, pins in `src/core/component-pins.js`):
 | NVIDIA DLSS SR / RR / FG (`nvngx_dlss*.dll`) | https://github.com/NVIDIA/DLSS (release tags, `lib/Windows_x86_64/rel`) | NVIDIA Authenticode signature, file version = tag, SHA-256 for v310.9.16 |
 | NVIDIA Streamline 2.13 (`sl.*.dll`) | https://github.com/RankFTW/rhi-repo/releases (streamline-2.13.0.0) | archive + per-file SHA-256, NVIDIA signature |
 | DLSS 5 model (`nvngx_dlssnr.dll`) | not publicly downloadable - imported by the user | NVIDIA signature, product "NVIDIA DLSSNR", version >= 310.8 |
-| RenoDX DLSS5 6.5.3 / DLSS Tool SF 26.1003.2350 | https://github.com/RankFTW/rhi-repo/releases | archive + file SHA-256 |
+| RenoDX DLSS5 8.5.0-rc10 / DLSS Tool SF 26.1003.2350 | https://github.com/RankFTW/rhi-repo/releases | archive + file SHA-256 |
 | DLSS5-Feeder 1.19.0 | https://github.com/jlrouzies-fr/DLSS5-Feeder/releases | archive + per-file SHA-256 |
 | VORT shaders, ReShade headers (Feeder dependencies) | vortigern11/vort_Shaders @ b410b9f, crosire/reshade-shaders @ ee30868 | per-file SHA-256 |
 | ReShade 6.8.0 (add-on build) | https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe | SHA-256; ReShade32/64.dll + layer json read from the zip inside the setup (never executed by the downloader) |

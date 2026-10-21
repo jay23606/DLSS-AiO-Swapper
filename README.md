@@ -99,7 +99,7 @@ The repository and the installer contain **not a single third-party DLL**. The a
 |---|---|---|
 | DLSS SR / RR / FG (`nvngx_dlss`, `nvngx_dlssd`, `nvngx_dlssg`) | Official from NVIDIA: [NVIDIA/DLSS](https://github.com/NVIDIA/DLSS) (any published version) | NVIDIA signature + version number |
 | Streamline 2.13 (`sl.*.dll`) | [RankFTW/rhi-repo](https://github.com/RankFTW/rhi-repo) | SHA-256 + NVIDIA signature |
-| RenoDX DLSS5 6.5.3 + multipass | [RankFTW/rhi-repo](https://github.com/RankFTW/rhi-repo) | SHA-256 |
+| RenoDX DLSS5 8.5.0-rc10 (lecram) + multipass (ShortFuse) | [RankFTW/rhi-repo](https://github.com/RankFTW/rhi-repo) | SHA-256 |
 | DLSS5-Feeder 1.19.0 | [jlrouzies-fr/DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder) | SHA-256 |
 | ReShade 6.8.0 (add-on build) | [reshade.me](https://reshade.me) | SHA-256 |
 | OptiScaler DLSS-NR builds | [Dagherbou/OptiScaler_DLSSNR](https://github.com/Dagherbou/OptiScaler_DLSSNR), [jlrouzies-fr/OptiScaler-DLSSNR-PreSR-Multipass](https://github.com/jlrouzies-fr/OptiScaler-DLSSNR-PreSR-Multipass) | SHA-256 |

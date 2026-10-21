@@ -652,7 +652,47 @@ async function load() {
   renderRecent();
   log(`Found ${state.games.length} games across ${new Set(state.games.map((g) => g.launcher)).size} sources`);
   await scanAll();
+  refreshUpdateAll();
 }
+
+// "Update all games": shown only when a game still carries an older copy of
+// a file the app installed (RenoDX add-on, NR model) than the components now
+// hold. One click swaps those files everywhere; settings stay as they are.
+let updateAllPending = [];
+async function refreshUpdateAll() {
+  const button = $('updateAll');
+  if (!button || !window.lab.updateAllGames) return;
+  let answer = null;
+  try { answer = await window.lab.updateAllGames(true); } catch { return; }
+  if (!answer || !answer.ok) return;
+  updateAllPending = answer.games || [];
+  button.textContent = t('updateAllGames', updateAllPending.length);
+  button.classList.toggle('hidden', updateAllPending.length === 0);
+}
+async function runUpdateAll() {
+  await refreshUpdateAll();
+  if (!updateAllPending.length || jobRunning) return;
+  const list = updateAllPending.map((g) => `• ${g.name}: ${g.files.join(', ')}`).join('\n');
+  if (!await ask({ icon: 'question', tone: 'accent', title: t('updateAllTitle', updateAllPending.length),
+    body: t('updateAllBody') + '\n\n' + list, confirm: t('updateAllConfirm'), cancel: t('cancel') })) return;
+  const button = $('updateAll');
+  button.disabled = true;
+  try {
+    const answer = await window.lab.updateAllGames(false);
+    if (!answer || !answer.ok) { log(t('updateAllFailed', answer?.message || answer?.code || '')); return; }
+    for (const r of answer.results) {
+      if (r.ok) log(t('updateAllDone', r.name, r.files.join(', ')));
+      else if (r.reason === 'running') log(t('updateAllRunning', r.name));
+      else log(t('updateAllFailedGame', r.name, r.reason));
+    }
+    for (const g of state.games) if (answer.results.some((r) => r.ok && r.name === g.name)) g.cached = null;
+    await scanAll();
+  } finally {
+    button.disabled = false;
+    refreshUpdateAll();
+  }
+}
+if ($('updateAll')) $('updateAll').onclick = runUpdateAll;
 
 async function pickGame(dir) {
   log(`Scanning: ${dir}`);
@@ -1298,13 +1338,37 @@ function paintCompBanner() {
 async function refreshComponents() {
   try { comp.status = await window.lab.componentsStatus(); } catch (e) { comp.status = { ok: false, message: e.message }; }
   paintCompBanner();
+  paintCompNav();
   if (document.getElementById('view-components')?.classList.contains('active')) paintComponents();
   return comp.status;
+}
+
+// The Components entry in the sidebar glows with a count when something there
+// can be downloaded or updated (a new RenoDX build, newer NVIDIA DLLs), so an
+// update is seen without opening the tab. Not for the DLSS 5 model: that one
+// is imported by hand and has no download to offer.
+function paintCompNav() {
+  const s = comp.status;
+  const list = s && s.ok && Array.isArray(s.components) ? s.components : [];
+  const due = list.filter((c) => c.downloadable && (c.status === 'outdated' || c.status === 'missing'));
+  for (const item of document.querySelectorAll('[data-view="components"]')) {
+    item.classList.toggle('has-update', due.length > 0);
+    let badge = item.querySelector('.nav-badge');
+    if (due.length) {
+      if (!badge) { badge = document.createElement('b'); badge.className = 'nav-badge'; item.appendChild(badge); }
+      badge.textContent = String(due.length);
+      item.title = t('compNavUpdates', due.length, due.map((c) => compName(c)).join(', '));
+    } else {
+      if (badge) badge.remove();
+      item.removeAttribute('title');
+    }
+  }
 }
 
 // The payload may have changed: the games list compares against its DLSS version.
 async function afterComponentsChanged() {
   await refreshComponents();
+  refreshUpdateAll();
   try {
     state.newDlss = (await window.lab.details(state.games[0] ? state.games[0].dir : '')).newDlss;
     renderGames();

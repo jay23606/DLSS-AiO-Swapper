@@ -1590,6 +1590,77 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
   }
 }));
 
+// "Update all games": after a component update (new RenoDX build, new NR
+// model), every game this app installed into still carries the old file until
+// it is reinstalled one by one. This swaps only those files - the ones the
+// app's own manifest lists - for the payload's verified copies, leaves every
+// setting (ReShade.ini) alone, and skips a game that is running. Restore keeps
+// working because it removes added files by name.
+function updatableSources() {
+  const chosen = payload(true);
+  if (!chosen) return null;
+  const s = chosen.source;
+  const byName = new Map();
+  if (s.addon && fs.existsSync(s.addon)) byName.set('renodx-dlss5.addon64', s.addon);
+  if (s.multipassAddon && fs.existsSync(s.multipassAddon)) byName.set('renodx-dlss.addon64', s.multipassAddon);
+  const nr = (s.payload || []).find((f) => f.name.toLowerCase() === 'nvngx_dlssnr.dll');
+  if (nr && fs.existsSync(nr.path)) byName.set('nvngx_dlssnr.dll', nr.path);
+  return byName;
+}
+const fileSha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+function gameUpdates(dir, sources) {
+  let manifest = null;
+  try { manifest = backends.readManifest(dir); } catch { return null; }
+  if (!manifest) return null;
+  const rels = [...(manifest.added || []), ...(manifest.replaced || []).map((item) => item && item.rel)];
+  const out = [];
+  const seen = new Set();
+  for (const rel of rels) {
+    if (typeof rel !== 'string') continue;
+    const src = sources.get(path.basename(rel).toLowerCase());
+    if (!src) continue;
+    let target;
+    try { target = journal.safePath(dir, rel); } catch { continue; }
+    if (seen.has(target.toLowerCase()) || !fs.existsSync(target)) continue;
+    seen.add(target.toLowerCase());
+    try { if (fileSha(target) !== fileSha(src)) out.push({ rel, src, target }); } catch { /* unreadable: leave it */ }
+  }
+  return out.length ? { manifest, files: out } : null;
+}
+ipcMain.handle('update-all-games', (_event, dryRun) => exclusiveMutation(async () => {
+  const sources = updatableSources();
+  if (!sources || !sources.size) return { ok: false, code: 'errNoPayload' };
+  const games = [];
+  for (const game of lastGames) {
+    const plan = gameUpdates(game.dir, sources);
+    if (plan) games.push({ dir: game.dir, name: game.name, plan });
+  }
+  if (dryRun) return { ok: true, games: games.map((g) => ({ dir: g.dir, name: g.name, files: g.plan.files.map((f) => path.basename(f.rel)) })) };
+  const results = [];
+  for (const g of games) {
+    try {
+      const exe = g.plan.manifest.game && g.plan.manifest.game.exe ? journal.safePath(g.dir, g.plan.manifest.game.exe) : null;
+      await guards.assertGameClosed(g.dir, exe);
+    } catch {
+      results.push({ name: g.name, ok: false, reason: 'running' });
+      continue;
+    }
+    const done = [];
+    try {
+      for (const f of g.plan.files) {
+        const tmp = f.target + '.aio-update';
+        fs.copyFileSync(f.src, tmp);
+        fs.renameSync(tmp, f.target);
+        done.push(path.basename(f.rel));
+      }
+      results.push({ name: g.name, ok: true, files: done });
+    } catch (error) {
+      results.push({ name: g.name, ok: false, reason: error.message, files: done });
+    }
+  }
+  return { ok: true, results };
+}));
+
 ipcMain.handle('restore', (event, dir) => exclusiveMutation(async () => {
   let restoredManifest = null;
   const send = (e) => {

@@ -11,11 +11,14 @@
 // it on the multipass route rather than joining it: two neural consumers in one
 // game leave the tickbox saying yes while the picture says no.
 const CONSUMER = Object.freeze({
-  version: '6.5.3',
+  // lecram's generic DLSS5 add-on. 8.5 adds the Look controls (colour, tone,
+  // detail, halo), detail stability, up to four passes and crash containment;
+  // it still reads NRPreset, so the model A/B switch keeps working.
+  version: '8.5.0-rc10',
   file: 'renodx-dlss5.addon64',
-  archive: Object.freeze(['renodx-dlss5_6.5.3.zip', 'https://github.com/RankFTW/rhi-repo/releases/download/renodx-dlss5-6.5.3/renodx-dlss5_6.5.3.zip', '553b1619b9e5ddfbcb4ebc7f2f3bffff9256a48a25b988f4817f5c63f4caa1de']),
-  size: 878080,
-  sha256: '342341f669f1d64e0c70c8593a07a2fab5075e073dfae97c331c9a6776260a0a'
+  archive: Object.freeze(['renodx-dlss5_8.5.0-rc10.zip', 'https://github.com/RankFTW/rhi-repo/releases/download/renodx-dlss5-8.5.0-rc10/renodx-dlss5_8.5.0-rc10.zip', 'a745040cb2e93e3a1500a6c5a322972acc4c5c667108fcea31c748285d6364a9']),
+  size: 3141632,
+  sha256: 'dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68'
 });
 // ShortFuse's DLSS Tool build, carrying DirectNeuralRenderingPassCount (#251).
 const MULTIPASS = Object.freeze({
