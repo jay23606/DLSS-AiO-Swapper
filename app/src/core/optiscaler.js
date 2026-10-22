@@ -40,6 +40,39 @@ const DIRECT = Object.freeze({
   licenses: Object.freeze(['DirectX_LICENSE.txt', 'FidelityFX_v1_LICENSE.md', 'FidelityFX_v2_LICENSE.md',
     'PeripheralWarp_LICENSE.txt', 'RenoDX_ATTRIBUTION.txt', 'XeSS_LICENSE.txt'])
 });
+// janblade's F5 fork (GPL-3.0). Same forwarder lineage, but it also publishes
+// an optional vendor-neutral forwarder that runs the DLSS 5 network itself on
+// D3D12 compute + DirectML instead of NVIDIA's NGX core - the only way the model
+// runs on AMD Radeon and Intel Arc. It reads the weights from NVIDIA's own,
+// signed nvngx_dlssnr.dll and needs 310.9 or newer (it runs 310.9's small
+// network = model B). Upstream says it was exercised on NVIDIA with the port
+// forced in, not yet on real AMD/Intel hardware: the route is experimental.
+const F5 = Object.freeze({
+  forwarder: 'nvngx.dll_dlssnr.dll',
+  notes: 'INSTALL-DLSSNR.md',
+  gpl: 'LICENSE',
+  licenses: Object.freeze(['DirectX_LICENSE.txt', 'FidelityFX_v2_LICENSE.md', 'PeripheralWarp_LICENSE.txt', 'RenoDX_ATTRIBUTION.txt', 'XeSS_LICENSE.txt'])
+});
+const PORT = Object.freeze({
+  url: 'https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass/releases/download/v0.1.33/Optional-Vendor-Neutral-DLSS5-Forwarder.zip',
+  sha256: '74a24eb103ef05a54ede6598d70f4c7093a2c683f59c40972d7a635e36ce8ae9',
+  files: Object.freeze({
+    'nvngx.dll_dlssnr.dll': '30aefc7aa19399c2905bfa64f69cca7eb1574135425d905c0e2f052fc523099c',
+    'nr_port.ini': '61d305b3631a7b9f7252fcdb6eeccc6f4663e89c806872e66266918cf15c7020',
+    'README-Vendor-Neutral-Port.txt': '12681eb33d63f1c8f03e4e77c3df24c8cdf7ddece9cb1b32e6004f13a825e08a'
+  }),
+  // The port reads the 310.9 small network; an older model file runs the big
+  // one, slowly.
+  minModel: '310.9'
+});
+const F5_RELEASE = Object.freeze({
+  version: '0.1.33-f5',
+  label: '0.1.33 - F5 (janblade)',
+  url: 'https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass/releases/download/v0.1.33/OptiScaler-DLSSNR-F5-0.1.33-with-dlss-fg.zip',
+  sha256: '352182b65c1c164f04f5d4e5edd94a01517fb030187702b77390a075ba1345d4',
+  layout: F5,
+  port: PORT
+});
 const RELEASES = Object.freeze([
   Object.freeze({
     version: '0.2.0-patch1',
@@ -66,7 +99,8 @@ const RELEASES = Object.freeze([
     licenseUrl: 'https://raw.githubusercontent.com/Dagherbou/OptiScaler_DLSSNR/393e070/LICENSE',
     licenseHash: '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986',
     layout: FORWARDED
-  })
+  }),
+  F5_RELEASE
 ]);
 const RELEASE = RELEASES[0];
 // An unknown name resolves to the current build rather than failing: a state
@@ -81,6 +115,14 @@ const LIBRARIES = [
 // The GPL text is written under one name whichever build supplied it.
 const GPL_AS = 'OptiScaler/licenses/LICENSE.GPL-3.0.txt';
 function fail(code, message = code) { return Object.assign(new Error(message), { code }); }
+function versionAtLeast(version, min) {
+  const a = String(version || '0').split('.').map(Number);
+  const b = String(min).split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return true;
+}
 function validatePayload(root, release = RELEASE) {
   const layout = release.layout;
   for (const rel of ['OptiScaler.dll', layout.forwarder, ...LIBRARIES.map(f => 'OptiScaler/' + f)].filter(Boolean)) {
@@ -90,8 +132,25 @@ function validatePayload(root, release = RELEASE) {
     if (!fs.existsSync(safePath(root, rel))) throw fail('errOptiPayload');
   }
 }
-async function ensureOptiScaler(cacheRoot, version) {
-  const release = releaseFor(version);
+const crypto = require('crypto');
+const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+// The vendor-neutral forwarder, fetched beside the build that publishes it.
+async function ensurePort(cacheRoot, release) {
+  const port = release.port;
+  if (!port) throw fail('errOptiNoPort');
+  const base = path.join(path.resolve(cacheRoot), 'components', `OptiScaler-${release.version}-port`);
+  const archive = base + '.zip';
+  if (!cached(archive, port.sha256)) await fetchVerified(port.url, port.sha256, archive);
+  await extractZip(archive, { dir: base });
+  for (const [name, sha] of Object.entries(port.files)) {
+    const file = safePath(base, name);
+    if (!fs.existsSync(file) || sha256Of(file) !== sha) throw fail('errOptiPayload');
+  }
+  if (pe.getBitness(safePath(base, release.layout.forwarder)) !== 64) throw fail('errOptiPayload');
+  return base;
+}
+async function ensureOptiScaler(cacheRoot, version, opts = {}) {
+  const release = opts.vendorNeutral ? F5_RELEASE : releaseFor(version);
   const base = path.join(path.resolve(cacheRoot), 'components', `OptiScaler-${release.version}`);
   const archive = base + '.zip';
   if (!cached(archive, release.sha256)) await fetchVerified(release.url, release.sha256, archive);
@@ -105,16 +164,28 @@ async function ensureOptiScaler(cacheRoot, version) {
     if (!cached(license, release.licenseHash)) await fetchVerified(release.licenseUrl, release.licenseHash, license);
   }
   validatePayload(base, release);
+  if (opts.vendorNeutral) await ensurePort(cacheRoot, release);
   return base;
 }
+const portRoot = (optiRoot) => optiRoot + '-port';
 function hookFor(api) { return api === 'vulkan' ? 'winmm.dll' : 'dxgi.dll'; }
 function configure(text, target) {
   let out = text;
+  // On AMD/Intel, OptiScaler's own GPU spoofing ('auto') is what lets a game
+  // offer DLSS at all; on NVIDIA it stays off as before.
   for (const [section, key, value] of [
     ['DlssNr', 'Enabled', 'true'], ['Log', 'LogToFile', 'true'], ['Log', 'LogLevel', '2'],
-    ['Spoofing', 'Dxgi', 'false'], ['Plugins', 'LoadAsiPlugins', 'false'],
+    ['Spoofing', 'Dxgi', target.vendorNeutral ? 'auto' : 'false'], ['Plugins', 'LoadAsiPlugins', 'false'],
     ['ProcessFilter', 'TargetProcessName', path.basename(target.exePath)]
   ]) out = ini.setIni(out, section, key, value);
+  if (target.vendorNeutral) {
+    // NVIDIA's DLSS upscaler cannot run without NGX: hand the game's DLSS/FSR/
+    // XeSS calls to FidelityFX, and to its D3D12 bridge on DX11/Vulkan.
+    out = ini.setIni(out, 'Upscalers', 'Dx12Upscaler', 'ffx');
+    out = ini.setIni(out, 'Upscalers', 'Dx11Upscaler', 'ffx_12');
+    out = ini.setIni(out, 'Upscalers', 'VulkanUpscaler', 'ffx_12');
+    return out;
+  }
   // DX11/Vulkan NR needs the documented D3D12 bridge, not native DLSS output.
   // Set defaults for all APIs: games can change renderer via launch arguments
   // without changing their executable's import table or scanner result.
@@ -127,16 +198,20 @@ function configure(text, target) {
   }
   return out;
 }
-function copyPlan(root, api, release = RELEASE) {
+function copyPlan(root, api, release = RELEASE, vendorNeutral = false) {
   const layout = release.layout;
+  const port = vendorNeutral && release.port ? portRoot(root) : null;
   return [
     ['OptiScaler.dll', hookFor(api)],
-    ...(layout.forwarder ? [[layout.forwarder, layout.forwarder]] : []),
+    ...(layout.forwarder && !port ? [[layout.forwarder, layout.forwarder]] : []),
+    ...(port ? [[path.relative(root, path.join(port, layout.forwarder)), layout.forwarder],
+      [path.relative(root, path.join(port, 'nr_port.ini')), 'nr_port.ini'],
+      [path.relative(root, path.join(port, 'README-Vendor-Neutral-Port.txt')), 'OptiScaler/README-Vendor-Neutral-Port.txt']] : []),
     ...LIBRARIES.map(f => ['OptiScaler/' + f, 'OptiScaler/' + f]),
     ...layout.licenses.map(f => ['Licenses/' + f, 'OptiScaler/licenses/' + f]),
     [layout.gpl || 'OptiScaler-GPL-3.0.txt', GPL_AS],
     [layout.notes, 'OptiScaler/README-DLSSNR.txt']
-  ].map(([from, to]) => ({ from: safePath(root, from), to }));
+  ].map(([from, to]) => ({ from: from.startsWith('..') ? path.resolve(root, from) : safePath(root, from), to }));
 }
 function checkConflicts(gameDir, exePath, manifest, api) {
   // Inspect the baseline too: switching restores it before installing. Never
@@ -191,18 +266,20 @@ async function install(config, log) {
   const { gameDir, exePath, api, optiRoot, source } = config;
   // Which build this game asked for. #238 gave every game its own choice, and
   // the manifest recorded the default no matter what was installed.
-  const release = releaseFor(config.optiVersion);
+  const vendorNeutral = Boolean(config.vendorNeutral);
+  const release = vendorNeutral ? F5_RELEASE : releaseFor(config.optiVersion);
   validatePayload(optiRoot, release);
   const nr = source.payload.find(f => f.name.toLowerCase() === 'nvngx_dlssnr.dll');
   if (!nr || pe.getBitness(nr.path) !== 64) throw fail('errNoNeuralRuntime');
+  if (vendorNeutral && !versionAtLeast(pe.getFileVersion(nr.path), PORT.minModel)) throw fail('errPortNeedsModel');
   const manifest = beginManifest(gameDir, exePath, api);
   manifest.route = 'optiscaler';
   manifest.game.bitness = 64;
   manifest.game.apiLabel = config.apiLabel;
-  manifest.optiscaler = { version: release.version, hook: hookFor(api) };
+  manifest.optiscaler = { version: release.version, hook: hookFor(api), vendorNeutral };
   const exeDir = path.dirname(exePath);
   if (!release.layout.forwarder) await retireForwarder(manifest, gameDir, exeDir, log);
-  for (const item of copyPlan(optiRoot, api, release)) {
+  for (const item of copyPlan(optiRoot, api, release, vendorNeutral)) {
     const rel = await copyTracked(manifest, gameDir, item.from, path.join(exeDir, item.to), { kind: 'optiscaler' });
     log({ code: 'added', params: { rel } });
   }
@@ -212,15 +289,19 @@ async function install(config, log) {
   // they came here with. An existing model is left alone; ours is installed
   // only when there is none.
   const model = path.join(exeDir, nr.name);
-  if (fs.existsSync(model)) {
+  if (fs.existsSync(model) && vendorNeutral && !versionAtLeast(pe.getFileVersion(model), PORT.minModel)) {
+    // The port would find this older file first and run the big network.
+    await copyTracked(manifest, gameDir, nr.path, model, { kind: 'runtime' });
+    log({ code: 'portModelReplaced', params: { rel: path.relative(gameDir, model) } });
+  } else if (fs.existsSync(model)) {
     log({ code: 'neuralModelKept', params: { rel: path.relative(gameDir, model) } });
   } else {
     await copyTracked(manifest, gameDir, nr.path, model, { kind: 'runtime' });
   }
   const file = path.join(exeDir, 'OptiScaler.ini');
   const prior = config.profile?.[path.relative(gameDir, file)] ?? ini.readText(file);
-  await writeTracked(manifest, gameDir, file, configure(prior || ini.readText(path.join(optiRoot, 'OptiScaler.ini')), config), { kind: 'config' });
+  await writeTracked(manifest, gameDir, file, configure(prior || ini.readText(path.join(optiRoot, 'OptiScaler.ini')), { ...config, vendorNeutral }), { kind: 'config' });
   await saveActiveManifest(gameDir, manifest);
   return manifest;
 }
-module.exports = { RELEASE, RELEASES, releaseFor, LIBRARIES, ensureOptiScaler, validatePayload, configure, copyPlan, hookFor, checkConflicts, install };
+module.exports = { RELEASE, RELEASES, F5_RELEASE, PORT, ensurePort, releaseFor, LIBRARIES, ensureOptiScaler, validatePayload, configure, copyPlan, hookFor, checkConflicts, install };

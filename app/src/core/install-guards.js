@@ -103,6 +103,56 @@ async function gpuInfo(runner = run) {
     });
   } catch { return null; }
 }
+// Every display adapter Windows knows, by PCI vendor id - read from the
+// registry with reg.exe, so it needs no PowerShell or WMI and works on any
+// vendor's driver (nvidia-smi only exists with NVIDIA's).
+const DISPLAY_CLASS = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}';
+const VENDORS = { '10de': 'nvidia', '1002': 'amd', '8086': 'intel' };
+function parseRegValues(text, name) {
+  const out = new Map();
+  let key = null;
+  for (const line of String(text || '').split(/\r?\n/)) {
+    if (/^HKEY_/i.test(line.trim())) { key = line.trim().toLowerCase(); continue; }
+    const m = line.match(new RegExp(`^\\s+${name}\\s+REG_SZ\\s+(.*)$`, 'i'));
+    if (m && key) out.set(key, m[1].trim());
+  }
+  return out;
+}
+async function displayAdapters(runner = run) {
+  try {
+    const reg = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
+    const ids = parseRegValues(await runner(reg, ['query', DISPLAY_CLASS, '/s', '/v', 'MatchingDeviceId']), 'MatchingDeviceId');
+    const names = parseRegValues(await runner(reg, ['query', DISPLAY_CLASS, '/s', '/v', 'DriverDesc']), 'DriverDesc');
+    const list = [];
+    for (const [key, id] of ids) {
+      const ven = (String(id).match(/ven_([0-9a-f]{4})/i) || [])[1];
+      const vendor = ven && VENDORS[ven.toLowerCase()];
+      if (vendor) list.push({ vendor, name: names.get(key) || id });
+    }
+    return list;
+  } catch { return []; }
+}
+// Which family of routes this PC can use. NVIDIA (nvidia-smi answers) keeps
+// every route. Without an NVIDIA card, an AMD Radeon or Intel Arc gets the
+// vendor-neutral DLSS 5 port (OptiScaler F5) and the NVIDIA-only routes are
+// greyed out. A laptop with Intel graphics beside an NVIDIA GPU stays NVIDIA.
+// DLSS_AIO_FORCE_GPU=amd|intel|nvidia overrides the answer (testing on another
+// vendor's machine, or a detection that went wrong).
+async function gpuMode(runner = run) {
+  const forced = String(process.env.DLSS_AIO_FORCE_GPU || '').toLowerCase();
+  const nvidia = await gpuInfo(runner);
+  const adapters = await displayAdapters(runner);
+  let mode;
+  if (['amd', 'intel', 'nvidia'].includes(forced)) mode = forced;
+  else if ((nvidia && nvidia.length) || adapters.some(a => a.vendor === 'nvidia')) mode = 'nvidia';
+  else if (adapters.some(a => a.vendor === 'amd')) mode = 'amd';
+  else if (adapters.some(a => a.vendor === 'intel')) mode = 'intel';
+  else mode = 'unknown';
+  const shown = mode === 'nvidia' && nvidia && nvidia.length
+    ? nvidia.map(r => r.name)
+    : adapters.filter(a => a.vendor === mode).map(a => a.name);
+  return { mode, vendorNeutral: mode === 'amd' || mode === 'intel', forced: Boolean(forced), names: shown.join(', ') || (adapters.map(a => a.name).join(', ')) };
+}
 function antiCheatPresent(gameDir) {
   const queue = [[gameDir, 0]];
   let examined = 0;
@@ -119,4 +169,4 @@ function antiCheatPresent(gameDir) {
   }
   return false;
 }
-module.exports = { assertGameClosed, executableLocked, matchingProcesses, gpuInfo, gpuSupported, gpuModelSupported, driverSupported, driverNeuralFault, driverNames, antiCheatPresent };
+module.exports = { assertGameClosed, executableLocked, matchingProcesses, gpuInfo, gpuMode, displayAdapters, parseRegValues, gpuSupported, gpuModelSupported, driverSupported, driverNeuralFault, driverNames, antiCheatPresent };

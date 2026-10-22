@@ -1,7 +1,7 @@
 'use strict';
 
 // Own add-on builds: a RenoDX DLSS 5 add-on someone bought or built themselves
-// (lecram's paid builds, ShortFuse's Patreon builds). The app never downloads
+// (lecram's paid builds, a newer ShortFuse build). The app never downloads
 // or ships these; the person imports the file once, it is checked (a 64-bit
 // Windows DLL with the right name, scanned by Microsoft Defender when it is
 // there) and copied into the app's own folder, so a cleaned-up Downloads folder

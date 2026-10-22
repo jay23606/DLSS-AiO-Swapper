@@ -177,7 +177,7 @@ function addonLibrary() {
   }
 
   // The shipped build is the base, not a choice, so it is not offered.
-  const base = p && path.basename(p.source.addon).toLowerCase();
+  const base = p && p.source.addon ? path.basename(p.source.addon).toLowerCase() : null;
   const chosen = new Set(enabledAddons());
   return found
     .filter((r) => !r.shipped)
@@ -219,13 +219,46 @@ function activeCustomAddons() {
   return out;
 }
 
+// The community DLSS 5 build for RTX 20/30/40 (Components). Used for installs
+// only while it is switched on and its pinned bytes are intact; it then takes
+// the place of nvngx_dlssnr.dll in the component payload.
+function legacyNrActive() {
+  try { return Boolean(loadState().legacyNrActive) && components.legacyNrReady(componentsDir()); } catch { return false; }
+}
+function withLegacyNr(dir, probe) {
+  if (!probe || !probe.ok || path.resolve(dir).toLowerCase() !== path.resolve(componentsDir()).toLowerCase() || !legacyNrActive()) return probe;
+  const file = components.legacyNrPath(componentsDir());
+  const entry = { name: 'nvngx_dlssnr.dll', path: file, version: pe.getFileVersion(file), legacy: true };
+  const list = (probe.payload || []).filter((f) => f.name.toLowerCase() !== 'nvngx_dlssnr.dll');
+  list.push(entry);
+  return { ...probe, payload: list, hasNeuralRendering: true, legacyNr: true };
+}
+// The PC's GPU family, once per run. AMD Radeon / Intel Arc switch the route
+// policy (shared with the renderer) to the vendor-neutral DLSS 5 port.
+let gpuModeMemo = null;
+function gpuModeReady() {
+  if (!gpuModeMemo) {
+    gpuModeMemo = guards.gpuMode()
+      .catch(() => ({ mode: 'unknown', vendorNeutral: false, names: '' }))
+      .then((m) => { installRoutes.setVendorNeutral(m.vendorNeutral); return m; });
+  }
+  return gpuModeMemo;
+}
+ipcMain.handle('gpu-mode', () => gpuModeReady());
+// nvidia-smi once per run is enough for advice and labels.
+let gpuMemo = null;
+async function gpuRows() {
+  if (!gpuMemo) gpuMemo = guards.gpuInfo().catch(() => null);
+  return gpuMemo;
+}
+
 function payload(raw) {
   // First the component-manager folder in userData, then the legacy places:
   // a build that ships a payload as an extra resource, or one beside main.js
   // when run from source. A complete folder wins over a partial one, so a
   // half-downloaded userData payload never hides a complete legacy one.
   const candidates = [componentsDir(), path.join(process.resourcesPath || '', 'payload'), path.join(__dirname, 'payload')]
-    .map((dir) => { let probe; try { probe = scanSource(dir); } catch { probe = { ok: false }; } return { dir, probe }; });
+    .map((dir) => { let probe; try { probe = withLegacyNr(dir, scanSource(dir)); } catch { probe = { ok: false }; } return { dir, probe }; });
   const pick = candidates.find(({ dir, probe }) => { try { return payloadComplete(dir, probe); } catch { return false; } }) ||
     candidates.find(({ probe }) => probe.ok);
   for (const { dir, probe } of pick ? [pick] : []) {
@@ -238,8 +271,10 @@ function payload(raw) {
       if (!raw) {
         const state = loadState();
         const list = state.addons || (state.addon ? [state.addon] : []);
-        const base = path.basename(probe.addon).toLowerCase();
-        const over = list.find((f) => fs.existsSync(f) && path.basename(f).toLowerCase() === base);
+        // An AMD / Intel payload can be just the DLSS 5 model: no add-on to
+        // swap, and path.basename(null) would throw out of every caller.
+        const base = probe.addon ? path.basename(probe.addon).toLowerCase() : null;
+        const over = base && list.find((f) => fs.existsSync(f) && path.basename(f).toLowerCase() === base);
         if (over) probe.addon = over;
         // An imported own build (Components > Own add-on) wins over both.
         const own = activeCustomAddons();
@@ -467,6 +502,7 @@ app.whenReady().then(async () => {
   // this point: without the guard it would create a window and take over the
   // overlay endpoint on its way out.
   if (!singleInstance) return;
+  gpuModeReady();
   // Registered here rather than at load: main.js is exercised in a plain vm
   // context by the tests, where src modules are stubbed and cannot be called.
   require('./src/overlay-ipc')({ app, ipcMain, dialog, shell, window: () => win, bridge: () => overlayBridge });
@@ -780,6 +816,7 @@ ipcMain.handle('scan', async (_event, dir) => {
   const state = loadState();
   const key = keyFor(dir);
   try {
+    await gpuModeReady();
     const scan = await scanGame(dir);
     const dlss = scan.primaryDlss;
     const result = {
@@ -960,7 +997,7 @@ function enabledAddons() {
 // file on disk, so it lands on top rather than beside it.
 function replacementAddon() {
   const p = payload(true);
-  if (!p) return null;
+  if (!p || !p.source.addon) return null;
   const base = path.basename(p.source.addon).toLowerCase();
   return enabledAddons().find((f) => path.basename(f).toLowerCase() === base) || null;
 }
@@ -970,7 +1007,7 @@ function replacementAddon() {
 function companionAddons() {
   const p = payload(true);
   if (!p) return [];
-  const taken = new Set([path.basename(p.source.addon).toLowerCase()]);
+  const taken = new Set(p.source.addon ? [path.basename(p.source.addon).toLowerCase()] : []);
   const out = [];
   for (const f of enabledAddons()) {
     const name = path.basename(f).toLowerCase();
@@ -1026,7 +1063,11 @@ ipcMain.handle('acknowledge-driver', (_event, names) => {
 // Which OptiScaler build a game uses, and the ones it may choose between. Only
 // names from the pinned list are accepted - the folder is still hash-verified
 // and still puts back anything swapped into it by hand (#191).
-ipcMain.handle('optiscaler-builds', (_event, dir) => ({
+ipcMain.handle('optiscaler-builds', async (_event, dir) => (await gpuModeReady()).vendorNeutral ? {
+  // AMD / Intel: only the build that carries the vendor-neutral port.
+  builds: [{ version: optiscaler.F5_RELEASE.version, label: optiscaler.F5_RELEASE.label }],
+  current: optiscaler.F5_RELEASE.version
+} : ({
   // The version is the identity; the label is what a person reads. Two of these
   // are one project's versions and one is another fork entirely, so a bare
   // number would read as "older" when it is neither older nor newer.
@@ -1094,7 +1135,9 @@ function displayPath(p) {
   }
   return p;
 }
-ipcMain.handle('components-status', () => {
+ipcMain.handle('components-status', async () => {
+  let gpu = null;
+  try { gpu = await gpuRows(); } catch { /* label only */ }
   try {
     const result = components.status(componentsDir(), componentOpts());
     const legacy = legacyPayload();
@@ -1106,7 +1149,9 @@ ipcMain.handle('components-status', () => {
       active = p ? path.dirname(p.source.dir) : null;
       activeComplete = Boolean(p && payloadComplete(active, p.source));
     } catch { /* informational */ }
-    return { ok: true, ...result, payloadDir: displayPath(result.payloadDir), legacy: offer.length ? { dir: displayPath(legacy), components: offer } : null, activePayload: displayPath(active), activeComplete };
+    const gpuInfo = gpu && gpu.length ? { names: guards.driverNames(gpu), blackwell: guards.gpuModelSupported(gpu) } : null;
+    return { ok: true, ...result, payloadDir: displayPath(result.payloadDir), legacy: offer.length ? { dir: displayPath(legacy), components: offer } : null, activePayload: displayPath(active), activeComplete,
+      gpu: gpuInfo, legacyNr: { ready: components.legacyNrReady(componentsDir()), active: legacyNrActive() } };
   } catch (error) { return componentError(error); }
 });
 ipcMain.handle('dlss-versions', async () => {
@@ -1117,8 +1162,32 @@ ipcMain.handle('components-download', (event, id, options) => exclusiveMutation(
   const opts = { ...componentOpts(), ...(options && typeof options === 'object' ? options : {}) };
   try {
     if (id === 'all') return await components.ensureAll(componentsDir(), opts, send);
-    return await components.download(componentsDir(), String(id), opts, send);
+    const result = await components.download(componentsDir(), String(id), opts, send);
+    // A downloaded community build is switched on for cards that need it
+    // (RTX 20/30/40); an RTX 50 keeps NVIDIA's signed model until told otherwise.
+    if (result && result.ok && id === components.LEGACY_NR.id) {
+      const gpu = await gpuRows();
+      const state = loadState();
+      // Only an NVIDIA card below RTX 50 uses it; AMD/Intel run the
+      // vendor-neutral port, which needs NVIDIA's 310.9 model instead.
+      state.legacyNrActive = Boolean(gpu && gpu.length && !guards.gpuModelSupported(gpu));
+      saveState(state);
+      result.active = state.legacyNrActive;
+    }
+    return result;
   } catch (error) { return componentError(error); }
+}));
+ipcMain.handle('components-legacy-nr', (_event, action) => exclusiveMutation(async () => {
+  const state = loadState();
+  if (action === 'remove') {
+    components.removeLegacyNr(componentsDir());
+    state.legacyNrActive = false;
+  } else if (action === 'on' || action === 'off') {
+    if (action === 'on' && !components.legacyNrReady(componentsDir())) return { ok: false, code: 'compErrLegacyNrMissing' };
+    state.legacyNrActive = action === 'on';
+  } else return { ok: false, code: 'compErrGeneric' };
+  saveState(state);
+  return { ok: true, active: legacyNrActive() };
 }));
 ipcMain.handle('components-import-nr', (event, arg) => exclusiveMutation(async () => {
   // arg: { title } from the renderer (already translated), or { file } to
@@ -1453,6 +1522,7 @@ ipcMain.handle('update-check', async () => {
   return updateAnswer;
 });
 ipcMain.handle('details', async (_event, dir) => {
+  await gpuModeReady();
   const detailsPayload = payload();
   const scan = await scanGame(dir);
   // Opening a game is a chance to undo the read-only ReShade.ini an install
@@ -1552,6 +1622,8 @@ async function exclusiveMutation(work) {
 }
 
 ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) => exclusiveMutation(async () => {
+  const gpuMode = await gpuModeReady();
+  const vendorNeutral = gpuMode.vendorNeutral;
   const p = payload();
   if (!p) return { ok: false, ...payloadMissing() };
   const scan = await scanGame(dir);
@@ -1612,10 +1684,38 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
       if (guards.driverNeuralFault(rows)) send({ code: 'driverNeuralFault', params: { gpu: guards.driverNames(rows) } });
     } catch {}
   }
+  // Which DLSS 5 model goes in, said once per install. NVIDIA's signed model
+  // does not start below RTX 50; say so instead of letting the add-on report
+  // "NR runtime did not start" in game.
+  try {
+    const rows = await gpuRows();
+    if (p.source.legacyNr) send({ code: 'legacyNrUsed', params: {} });
+    else if (rows && rows.length && !guards.gpuModelSupported(rows)) send({ code: 'nrOldCard', params: { gpu: guards.driverNames(rows) } });
+  } catch { /* advice only */ }
 
   let optiRoot = null;
   let optiVersion = null;
-  if (route === 'optiscaler') {
+  if (route === 'optiscaler' && vendorNeutral) {
+    optiscaler.checkConflicts(dir, target.path, old, api);
+    if (api === 'vulkan' && await vulkanLayer.existing(vulkanLayer.defaultRunner)) return { ok: false, code: 'errOptiVulkanLayer' };
+    const confirmation = await dialog.showMessageBox(win, {
+      type: 'warning', title: 'DLSS 5 - AMD / Intel (experimental)',
+      message: featureText('portConfirm'),
+      detail: [gpuMode.names, featureText('portDetail'), featureText('portHowTo')].filter(Boolean).join('\n\n'),
+      buttons: [featureText('installOpti'), featureText('cancel')], defaultId: 1, cancelId: 1
+    });
+    if (confirmation.response !== 0) return { ok: false, cancelled: true };
+    const nrFile = (p.source.payload || []).find((f) => f.name.toLowerCase() === 'nvngx_dlssnr.dll');
+    if (!nrFile || compareVersions(pe.getFileVersion(nrFile.path) || '0', optiscaler.PORT.minModel) < 0) return { ok: false, code: 'errPortNeedsModel' };
+    const missing = missingVCRuntime(64, path.dirname(target.path), process.env.SystemRoot, ['msvcp140_atomic_wait.dll']);
+    if (missing.length) return { ok: false, code: 'runtimeRequiredHint', message: missing.join(', ') };
+    send({ code: 'optiDownloading', params: {} });
+    optiVersion = optiscaler.F5_RELEASE.version;
+    try { optiRoot = await optiscaler.ensureOptiScaler(app.getPath('userData'), optiVersion, { vendorNeutral: true }); }
+    catch (err) { return { ok: false, code: componentCode(err, 'errOptiDownload'), message: err.message }; }
+    send({ code: 'optiVerified', params: { version: optiscaler.F5_RELEASE.label } });
+    send({ code: 'portUsed', params: { gpu: gpuMode.names } });
+  } else if (route === 'optiscaler') {
     optiscaler.checkConflicts(dir, target.path, old, api);
     if (api === 'vulkan' && await vulkanLayer.existing(vulkanLayer.defaultRunner)) return { ok: false, code: 'errOptiVulkanLayer' };
     const gpu = await guards.gpuInfo();
@@ -1722,6 +1822,7 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
       source: p.source,
       optiRoot,
       optiVersion,
+      vendorNeutral: route === 'optiscaler' && vendorNeutral,
       companions,
       reshadeSetup: p.reshadeSetup,
       setupRunner: proton ? createSetupRunner(proton) : undefined,
@@ -1769,7 +1870,14 @@ function updatableSources() {
 // by a newer version, never an older one.
 function replaceable(name, target, src) {
   if (name === 'nvngx_dlssnr.dll') {
-    try { return compareVersions(pe.getFileVersion(src), pe.getFileVersion(target)) > 0; } catch { return false; }
+    // Switching between NVIDIA's model and the community build for RTX 20/30/40
+    // goes both ways, whatever the version numbers say.
+    try {
+      const legacy = components.LEGACY_NR.sha256;
+      if (fileSha(src) === legacy) return true;
+      if (fileSha(target) === legacy) return true;
+      return compareVersions(pe.getFileVersion(src), pe.getFileVersion(target)) > 0;
+    } catch { return false; }
   }
   const known = new Set([...renodxRelease.SHIPPED, ...customAddons.knownHashes(app.getPath('userData'))]);
   try { return known.has(fileSha(target)); } catch { return false; }
