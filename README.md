@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/machiavelli31/DLSS-AiO-Swapper?label=download&style=for-the-badge&color=a855f7"></a>
-  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/machiavelli31/DLSS-AiO-Swapper/total?style=for-the-badge&color=22d3ee"></a>
+  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/machiavelli31/DLSS-AiO-Swapper/total?style=for-the-badge&color=22d3ee&label=downloads&cacheSeconds=3600"></a>
   <a href="../../stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/machiavelli31/DLSS-AiO-Swapper?style=for-the-badge&color=f5c542"></a>
 </p>
 
