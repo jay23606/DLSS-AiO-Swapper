@@ -401,7 +401,7 @@ for (const [code, values] of Object.entries(rendererStrings)) {
 Object.assign(catalog.en, {
   routePort: 'DLSS 5 for AMD / Intel (experimental)',
   backendNeedsNvidia: 'needs an NVIDIA RTX card',
-  portHint: 'Your GPU is not an NVIDIA RTX, so NVIDIA\'s DLSS 5 runtime cannot start. This route runs the DLSS 5 network itself on DirectX 12 (community port by janblade, model B). In game: turn on DLSS, FSR or XeSS (any quality), then press Insert for the menu. Experimental: its author tested it on NVIDIA, not yet on AMD/Intel hardware.',
+  portHint: 'Your GPU is not an NVIDIA RTX, so NVIDIA\'s DLSS 5 runtime cannot start. This route runs the DLSS 5 network itself on DirectX 12 (community port by janblade, model B). In game: turn on DLSS, FSR or XeSS (any quality), then press Insert for the menu. Experimental: confirmed on a Radeon, but expect a big fps hit - use Potato / Reuse detail in the Insert menu.',
   portConfirm: 'Install DLSS 5 for AMD / Intel (experimental) in this game?',
   portDetail: 'Community port by janblade (OptiScaler F5, GPL-3.0): it runs NVIDIA\'s DLSS 5 network on DirectX 12 compute instead of NVIDIA\'s driver. It reads the weights from NVIDIA\'s signed nvngx_dlssnr.dll 310.9 and uses the small model (B). Not made or supported by NVIDIA or AMD. Single-player games only. Restore removes everything.',
   portHowTo: 'In game: turn on DLSS, FSR or XeSS in the graphics settings, then press Insert. The Neural Rendering status line should read "Model backend: vendor-neutral port". If it does not start, send nr_port.log and OptiScaler.log from the game folder.',
@@ -416,7 +416,7 @@ Object.assign(catalog.en, {
 Object.assign(catalog.de, {
   routePort: 'DLSS 5 für AMD / Intel (experimentell)',
   backendNeedsNvidia: 'braucht eine NVIDIA-RTX-Karte',
-  portHint: 'Deine GPU ist keine NVIDIA RTX, daher kann NVIDIAs DLSS-5-Runtime nicht starten. Diese Route berechnet das DLSS-5-Netz selbst über DirectX 12 (Community-Port von janblade, Modell B). Im Spiel: DLSS, FSR oder XeSS einschalten (egal welche Qualität), dann Einfg fürs Menü. Experimentell: Der Autor hat es auf NVIDIA getestet, noch nicht auf AMD/Intel.',
+  portHint: 'Deine GPU ist keine NVIDIA RTX, daher kann NVIDIAs DLSS-5-Runtime nicht starten. Diese Route berechnet das DLSS-5-Netz selbst über DirectX 12 (Community-Port von janblade, Modell B). Im Spiel: DLSS, FSR oder XeSS einschalten (egal welche Qualität), dann Einfg fürs Menü. Experimentell: Auf einer Radeon bestätigt, kostet aber viel FPS - im Einfg-Menü Potato / Reuse detail nutzen.',
   portConfirm: 'DLSS 5 für AMD / Intel (experimentell) in diesem Spiel installieren?',
   portDetail: 'Community-Port von janblade (OptiScaler F5, GPL-3.0): Er rechnet NVIDIAs DLSS-5-Netz über DirectX-12-Compute statt über NVIDIAs Treiber. Die Gewichte kommen aus NVIDIAs signierter nvngx_dlssnr.dll 310.9, genutzt wird das kleine Modell (B). Nicht von NVIDIA oder AMD. Nur Einzelspieler-Spiele. „Wiederherstellen“ entfernt alles.',
   portHowTo: 'Im Spiel: DLSS, FSR oder XeSS in den Grafikeinstellungen einschalten, dann Einfg drücken. Die Neural-Rendering-Statuszeile sollte „Model backend: vendor-neutral port“ zeigen. Startet es nicht, schick nr_port.log und OptiScaler.log aus dem Spielordner.',

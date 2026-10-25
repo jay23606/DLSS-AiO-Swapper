@@ -1540,7 +1540,7 @@ async function renderCustomAddons() {
   box.innerHTML = present.length ? present.map((r) => `
     <div class="own-row${r.active ? ' on' : ''}">
       <div class="own-info"><b>${esc(r.label)}</b>
-        <span>${esc(r.name)}${r.version ? ' · v' + esc(r.version) : ''} · SHA-256 ${esc(String(r.sha256).slice(0, 12))}…</span>
+        <span>${esc(r.file || r.name)}${r.version ? ' · v' + esc(r.version) : ''} · SHA-256 ${esc(String(r.sha256).slice(0, 12))}…</span>
         <span class="own-state">${esc(t(r.active ? 'caActive' : 'caInactive'))}</span></div>
       <div class="own-acts">
         <button class="${r.active ? 'ghost' : 'glass-btn'} sm" data-ca-act="${r.active ? 'off' : 'on'}" data-ca-name="${esc(r.name)}">${esc(t(r.active ? 'caUseBuiltin' : 'caUseOwn'))}</button>
@@ -1553,7 +1553,9 @@ async function customAddonImport() {
   const answer = await window.lab.customAddonImport({ title: t('caImport') });
   if (!answer || answer.cancelled) return;
   if (!answer.ok) { log(t('caFailed', answer.code ? t(answer.code, answer.params || {}) : answer.message)); return; }
-  log(t('caImported', answer.name, answer.version || '?', answer.scanned));
+  log(answer.file === 'dlss5-nr.addon64'
+    ? t('caImportedV11', answer.version || '?', answer.scanned)
+    : t('caImported', answer.name, answer.version || '?', answer.scanned));
   await renderCustomAddons();
   refreshUpdateAll();
 }

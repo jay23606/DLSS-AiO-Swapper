@@ -104,7 +104,7 @@ The repository and the installer contain **not a single third-party DLL**. The a
 | DLSS5-Feeder 1.19.0 | [jlrouzies-fr/DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder) | SHA-256 |
 | ReShade 6.8.0 (add-on build) | [reshade.me](https://reshade.me) | SHA-256 |
 | OptiScaler DLSS-NR builds | [Dagherbou/OptiScaler_DLSSNR](https://github.com/Dagherbou/OptiScaler_DLSSNR), [jlrouzies-fr/OptiScaler-DLSSNR-PreSR-Multipass](https://github.com/jlrouzies-fr/OptiScaler-DLSSNR-PreSR-Multipass) | SHA-256 |
-| dgVoodoo 2.87.5 | [dege-diosg/dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2) | SHA-256 |
+| dgVoodoo 2.87.6 | [dege-diosg/dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2) | SHA-256 |
 | LumeniteFX shaders | [umar-afzaal/LumeniteFX](https://github.com/umar-afzaal/LumeniteFX) | pinned commit |
 | **DLSS 5 runtime `nvngx_dlssnr.dll`** | **not included, no download** – see below | NVIDIA signature |
 | OptiScaler F5 + vendor-neutral DLSS 5 port (AMD / Intel only) | [janblade/OptiScaler-F5-DLSSNR-Multipass](https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass) | SHA-256 |
@@ -156,7 +156,9 @@ Since driver **621.01** lecram's DLSS 5 add-on (8.5 and 10.8) can crash games ri
 
 ## Own add-on builds (paid lecram / ShortFuse builds)
 
-Newer lecram builds (10.x / v11) are sold by their author on Buy Me a Coffee; ShortFuse's DLSS Tool is free and already built in. The app never downloads or shares paid builds – but if you bought one, import it once under **Components → Own add-on** (`.addon64` or the `.zip` you got). It is checked (64-bit ReShade add-on, right file name), scanned by Microsoft Defender, copied into the app's folder and from then on used for every install. **Update installed DLSS 5** in the Games tab puts it into all games that already have DLSS 5 – and it only ever replaces files the app put there itself, so a build you placed by hand is never downgraded.
+Newer lecram builds (10.x / v11 / v12) are sold by their author on Buy Me a Coffee; ShortFuse's DLSS Tool is free and already built in. The app never downloads or shares paid builds – but if you bought one, import it once under **Components → Own add-on** (`.addon64` or the `.zip` you got). It is checked (64-bit ReShade add-on, right file name), scanned by Microsoft Defender, copied into the app's folder and from then on used for every install. **Update installed DLSS 5** in the Games tab puts it into all games that already have DLSS 5 – and it only ever replaces files the app put there itself, so a build you placed by hand is never downgraded.
+
+**lecram v11 / v12** is called `dlss5-nr.addon64` – import the *Add-on only* download (not lecram's own installer). It keeps that file name in the game; the old `renodx-dlss5.addon64` is moved into the backup automatically. Because the name is new, click **Install DLSS 5** once per game (after that, *Update installed DLSS 5* keeps them current). It is used by the ReShade route **and the Feeder route** (games without DLSS), and **Restore** also removes the runtime copy (`dlss5-nr-runtime\`, ~500 MB) that v11/v12 creates next to the game.
 
 ## Feature requests and bugs
 

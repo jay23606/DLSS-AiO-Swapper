@@ -582,12 +582,15 @@ async function applyFeeder(config, log) {
     feederConfig.configureFeed(feederConfig.readText(cfgPath)), { kind: 'config' }
   );
 
-  // The Feeder's consumer is always the ordinary one: the Feeder recognises
-  // renodx-dlss5*, and the multipass build is a route of its own (#251). A
-  // per-game switch could once swap it in here, unseen and unreachable from the
-  // app - which is how a game ended up with a multipass nobody had chosen.
-  const consumerName = 'renodx-dlss5.addon64';
+  // The Feeder's consumer is lecram's add-on, never the multipass build (a
+  // route of its own, #251). An imported v11/v12 (dlss5-nr.addon64) takes this
+  // place under its own name: the Feeder only looks for renodx-dlss5* in its
+  // log, but its DLAA pass reaches whichever add-on hooks NGX, and v12 detects
+  // the Feeder as its companion host (checked in Skyrim SE: NR-NGX
+  // evaluate_caller module=dlss5-feed.addon64, NR created, frames delivered).
   const consumerFile = source.feeder.hostAddon;
+  const consumerName = /^dlss5-nr\.addon64$/i.test(path.basename(consumerFile || ''))
+    ? 'dlss5-nr.addon64' : 'renodx-dlss5.addon64';
 
   const hostDir = bitness === 32 ? path.join(exeDir, 'host64') : exeDir;
   await setAsideRivalConsumers(manifest, gameDir, hostDir, consumerName, log);
@@ -674,7 +677,8 @@ async function enableAddonInIni(exeDir, addonName, log, gameDir, manifest) {
 // add-on beside it is moved into the backup - tracked like any replaced file,
 // so Restore puts the person's own build back - and one this app left there
 // itself is simply removed.
-const RENODX_CONSUMER = /^renodx-dlss.*\.addon64$/i;
+// lecram v11 is called dlss5-nr.addon64 and is the same kind of consumer.
+const RENODX_CONSUMER = /^(?:renodx-dlss.*|dlss5-nr)\.addon64$/i;
 async function setAsideRivalConsumers(manifest, gameDir, dir, keep, log) {
   let names = [];
   try { names = fs.readdirSync(dir); } catch { return; }
@@ -1099,6 +1103,39 @@ function recoverableManifest(gameDir) {
   return null;
 }
 
+// lecram v11/v12 (dlss5-nr.addon64) writes beside itself while the game runs:
+// a private copy of the NR runtime (dlss5-nr-runtime\, two copies of
+// nvngx_dlssnr.dll, ~500 MB) and a one-time ReShade.ini.v11-/v12-backup when it
+// migrates settings. None of that is in the manifest, so without this a
+// Restore left half a gigabyte behind. Only these exact names are removed, and
+// the runtime folder only when it holds nothing but the runtime copies.
+async function removeNrLeftovers(gameDir, manifest, log) {
+  const dirs = new Set();
+  for (const entry of manifest.added || []) {
+    const rel = typeof entry === 'string' ? entry : entry && entry.rel;
+    if (rel && /^dlss5-nr\.addon64$/i.test(path.basename(rel))) dirs.add(path.join(gameDir, path.dirname(rel)));
+  }
+  for (const dir of dirs) {
+    const runtime = path.join(dir, 'dlss5-nr-runtime');
+    const onlyRuntime = (folder) => {
+      try {
+        return fs.readdirSync(folder, { withFileTypes: true }).every((e) => e.isDirectory()
+          ? onlyRuntime(path.join(folder, e.name))
+          : /^(nvngx_dlssnr\.dll|nr-copy\.txt)$/i.test(e.name));
+      } catch { return false; }
+    };
+    if (fs.existsSync(runtime) && onlyRuntime(runtime)) {
+      try { await fs.promises.rm(runtime, { recursive: true, force: true }); log('deleted', { rel: path.relative(gameDir, runtime) }); }
+      catch { /* in use: harmless, next Restore takes it */ }
+    }
+    for (const name of ['ReShade.ini.v11-backup', 'ReShade.ini.v12-backup']) {
+      const file = path.join(dir, name);
+      if (!fs.existsSync(file)) continue;
+      try { await fs.promises.rm(file, { force: true }); log('deleted', { rel: path.relative(gameDir, file) }); } catch {}
+    }
+  }
+}
+
 async function restore(gameDir, onLog) {
   const log = (code, params) => onLog && onLog({ code, params: params || {} });
   let manifestPath = path.join(backupRoot(gameDir), MANIFEST);
@@ -1113,6 +1150,7 @@ async function restore(gameDir, onLog) {
     log('restoreRecovered', { date: manifest.date, route: manifest.route || null });
   }
   await restoreFiles(gameDir, manifest, onLog);
+  await removeNrLeftovers(gameDir, manifest, log);
 
   if (manifest.vulkanLayer) {
     const removed = await vulkanLayer.detach(manifest.vulkanLayer, gameDir);

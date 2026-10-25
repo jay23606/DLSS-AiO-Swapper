@@ -278,7 +278,13 @@ function payload(raw) {
         if (over) probe.addon = over;
         // An imported own build (Components > Own add-on) wins over both.
         const own = activeCustomAddons();
-        if (own['renodx-dlss5.addon64']) { probe.addon = own['renodx-dlss5.addon64']; probe.hostAddon = own['renodx-dlss5.addon64']; }
+        // An imported lecram build - renodx-dlss5.addon64 or v11/v12's
+        // dlss5-nr.addon64 - serves every route that uses lecram, the Feeder
+        // included (apply.js keeps the v11/v12 file name in the game).
+        if (own['renodx-dlss5.addon64']) {
+          probe.addon = own['renodx-dlss5.addon64'];
+          if (probe.feeder) probe.feeder = { ...probe.feeder, hostAddon: own['renodx-dlss5.addon64'] };
+        }
         if (own['renodx-dlss.addon64']) probe.multipassAddon = own['renodx-dlss.addon64'];
       }
       return { source: probe, reshadeSetup: setup ? path.join(dir, setup) : null };
@@ -1218,7 +1224,8 @@ ipcMain.handle('custom-addons', () => {
     const e = entries[name];
     const present = Boolean(e && typeof e.path === 'string' && fs.existsSync(e.path));
     return { name, label: customAddons.NAMES[name], present, active: Boolean(present && e.active),
-      version: present ? e.version || null : null, sha256: present ? e.sha256 : null, importedAt: present ? e.importedAt : null };
+      version: present ? e.version || null : null, sha256: present ? e.sha256 : null, importedAt: present ? e.importedAt : null,
+      file: present ? path.basename(e.path) : name };
   });
 });
 ipcMain.handle('custom-addon-import', (_event, arg) => exclusiveMutation(async () => {
@@ -1226,7 +1233,7 @@ ipcMain.handle('custom-addon-import', (_event, arg) => exclusiveMutation(async (
   const res = await dialog.showOpenDialog(win, {
     title: typeof request.title === 'string' ? request.title : 'Import own add-on',
     properties: ['openFile'],
-    filters: [{ name: 'renodx-dlss5.addon64 / renodx-dlss.addon64 / .zip', extensions: ['addon64', 'zip'] }]
+    filters: [{ name: 'renodx-dlss5.addon64 / dlss5-nr.addon64 / renodx-dlss.addon64 / .zip', extensions: ['addon64', 'zip'] }]
   });
   if (res.canceled || !res.filePaths.length) return { ok: false, cancelled: true };
   try {
@@ -1260,7 +1267,7 @@ ipcMain.handle('custom-addon-remove', (_event, name) => {
 // ---- Game page: RenoDX HDR mod and extra ReShade add-ons -------------------
 // Both go beside ReShade in a game this app set up, and both are recorded in
 // the game's manifest, so Restore removes them like everything else.
-const DLSS_ADDONS = new Set(['renodx-dlss5.addon64', 'renodx-dlss.addon64']);
+const DLSS_ADDONS = new Set(['renodx-dlss5.addon64', 'renodx-dlss.addon64', 'dlss5-nr.addon64']);
 function reshadeGame(dir) {
   let manifest = null;
   try { manifest = backends.readManifest(dir); } catch { return { ok: false, reason: 'hdrNeedsReShade' }; }
@@ -1857,7 +1864,7 @@ function updatableSources() {
   if (!chosen) return null;
   const s = chosen.source;
   const byName = new Map();
-  if (s.addon && fs.existsSync(s.addon)) byName.set('renodx-dlss5.addon64', s.addon);
+  if (s.addon && fs.existsSync(s.addon)) byName.set(path.basename(s.addon).toLowerCase(), s.addon);
   if (s.multipassAddon && fs.existsSync(s.multipassAddon)) byName.set('renodx-dlss.addon64', s.multipassAddon);
   const nr = (s.payload || []).find((f) => f.name.toLowerCase() === 'nvngx_dlssnr.dll');
   if (nr && fs.existsSync(nr.path)) byName.set('nvngx_dlssnr.dll', nr.path);

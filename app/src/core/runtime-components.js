@@ -12,11 +12,12 @@ const pe = require('./pe');
 // 2.87.5 exists because 2.87.4 is flagged by antivirus engines - upstream
 // titled the release "Hopefully an AV-undetected version" - and people were
 // left with a wrapper their own machine quarantined (#390). Same archive
-// layout, so the install path is unchanged.
+// layout, so the install path is unchanged. 2.87.6: bug fixes only (Witcher 2,
+// fullscreen, a freeze); upstream dropped the "v" from the tag.
 const DGVOODOO = {
-  version: '2.87.5',
-  url: 'https://github.com/dege-diosg/dgVoodoo2/releases/download/v2.87.5/dgVoodoo2_87_5.zip',
-  sha256: '5ffde6927f7355ca3fdd5d785b581256a8e6539fa13e395a891ade6ba1040850'
+  version: '2.87.6',
+  url: 'https://github.com/dege-diosg/dgVoodoo2/releases/download/2.87.6/dgVoodoo2_87_6.zip',
+  sha256: '5f9d86d85b381d25bfa93039128eb8255fd14c271c7491466b40a4ccc6138f4f'
 };
 
 async function ensureDgVoodoo(cacheRoot) {
