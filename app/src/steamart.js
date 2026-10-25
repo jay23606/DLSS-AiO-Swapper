@@ -67,7 +67,9 @@ function pick(rows, query) {
 
 async function getJson(url) {
   await throttle();
-  const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  // Bounded: a store request that never answers (firewall, filtering proxy,
+  // broken IPv6 route) must fail instead of hanging whoever waits for art.
+  const res = await fetch(url, { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error(`Steam replied ${res.status}`);
   return res.json();
 }
@@ -132,7 +134,7 @@ async function look(name, appid) {
 }
 
 async function download(url, dest) {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`download failed (${res.status})`);
   const buf = Buffer.from(await res.arrayBuffer());
   // A missing asset can come back as a tiny placeholder rather than a 404.

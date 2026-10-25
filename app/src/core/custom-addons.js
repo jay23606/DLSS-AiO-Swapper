@@ -1,7 +1,7 @@
 'use strict';
 
 // Own add-on builds: a RenoDX DLSS 5 add-on someone bought or built themselves
-// (lecram's paid builds, ShortFuse's Patreon builds). The app never downloads
+// (lecram's paid builds, a newer ShortFuse build). The app never downloads
 // or ships these; the person imports the file once, it is checked (a 64-bit
 // Windows DLL with the right name, scanned by Microsoft Defender when it is
 // there) and copied into the app's own folder, so a cleaned-up Downloads folder
@@ -22,6 +22,14 @@ const NAMES = Object.freeze({
   'renodx-dlss5.addon64': 'RenoDX DLSS5 (lecram / generic)',
   'renodx-dlss.addon64': 'RenoDX DLSS Tool (ShortFuse, multipass)'
 });
+// Other file names for a slot. lecram's v11 is the same add-on family under a
+// new name, dlss5-nr.addon64, and it must keep that name in a game: v11 looks
+// for a loaded renodx-dlss5.addon64 and treats it as a second, conflicting NR
+// add-on. So it fills the lecram slot but is stored and installed as itself.
+const VARIANTS = Object.freeze({
+  'dlss5-nr.addon64': 'renodx-dlss5.addon64'
+});
+const slotOf = (name) => VARIANTS[name] || (Object.hasOwn(NAMES, name) ? name : null);
 
 function resolveAddonName(filename) {
   const name = path.basename(filename).toLowerCase();
@@ -52,7 +60,7 @@ function findAddon(dir) {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
       if (e.isDirectory() && depth < 3) walk(p, depth + 1);
-      else if (e.isFile() && Object.hasOwn(NAMES, e.name.toLowerCase())) hits.push(p);
+      else if (e.isFile() && slotOf(e.name.toLowerCase())) hits.push(p);
     }
   };
   walk(dir, 0);
@@ -68,19 +76,20 @@ async function importFile(userData, file) {
       tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aio-addon-'));
       await extract(file, { dir: tmp });
       const hits = findAddon(tmp);
-      if (!hits.length) throw fail('caErrNoAddon', 'The archive contains no renodx-dlss5.addon64 or renodx-dlss.addon64.');
+      if (!hits.length) throw fail('caErrNoAddon', 'The archive contains no renodx-dlss5.addon64, dlss5-nr.addon64 or renodx-dlss.addon64.');
       if (hits.length > 1) throw fail('caErrTwoAddons', 'The archive contains more than one add-on; import the one you want on its own.');
       src = hits[0];
     }
-    const name = resolveAddonName(src);
-    if (!name) throw fail('caErrName', 'Only renodx-dlss5.addon64 or renodx-dlss.addon64 can be imported.');
+    const fileName = path.basename(src).toLowerCase();
+    const name = resolveAddonName(src) || slotOf(fileName);
+    if (!name) throw fail('caErrName', 'Only renodx-dlss5.addon64, dlss5-nr.addon64 (lecram v11) or renodx-dlss.addon64 can be imported.');
     const head = Buffer.alloc(2);
     const fd = fs.openSync(src, 'r'); fs.readSync(fd, head, 0, 2, 0); fs.closeSync(fd);
     if (head.toString('latin1') !== 'MZ' || pe.getBitness(src) !== 64) throw fail('caErrNotAddon', 'This is not a 64-bit ReShade add-on.');
     const scan = await defenderScan(src);
     if (scan.threat) throw fail('caErrThreat', `Microsoft Defender flagged this file: ${scan.detail || ''}`, { detail: scan.detail || '' });
     const digest = sha256(src);
-    const dest = path.join(root(userData), name.replace(/\.addon64$/, ''), digest.slice(0, 16), name);
+    const dest = path.join(root(userData), name.replace(/\.addon64$/, ''), digest.slice(0, 16), fileName);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     if (!fs.existsSync(dest) || sha256(dest) !== digest) fs.copyFileSync(src, dest);
     // The add-on's own "v10.8.0" label is what its author and its menu call
@@ -90,7 +99,7 @@ async function importFile(userData, file) {
       const m = /\x00v(\d{1,2}\.\d{1,2}\.\d{1,2}(?:-[a-z]+\d*)?)\x00/.exec(fs.readFileSync(dest).toString('latin1'));
       version = m ? m[1] : pe.getFileVersion(dest);
     } catch { /* unversioned build */ }
-    return { name, path: dest, sha256: digest, version, scanned: scan.scanned };
+    return { name, file: fileName, path: dest, sha256: digest, version, scanned: scan.scanned };
   } finally {
     if (tmp) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } }
   }
@@ -106,4 +115,4 @@ function knownHashes(userData) {
   return out;
 }
 
-module.exports = { NAMES, importFile, knownHashes, root, defenderScan, resolveAddonName };
+module.exports = { NAMES, VARIANTS, slotOf, importFile, knownHashes, root, defenderScan, resolveAddonName };

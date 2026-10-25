@@ -29,7 +29,7 @@ function findInis(gameDir, maxDepth = 6) {
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     const names = entries.map((e) => e.name.toLowerCase());
-    const hasConsumer = names.some((n) => /^renodx-dlss5.*\.addon(64|32)?$/.test(n));
+    const hasConsumer = names.some((n) => /^(?:renodx-dlss5.*|dlss5-nr)\.addon(64|32)?$/.test(n));
     let opti = false;
     if (names.includes('optiscaler.ini') && (names.includes('nvngx.dll_dlssnr.dll') || names.includes('optiscaler.dll'))) {
       const file = path.join(dir, entries.find((e) => e.name.toLowerCase() === 'optiscaler.ini').name);

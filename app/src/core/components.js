@@ -56,6 +56,35 @@ const RESHADE = {
 
 // The table the UI shows. `kind` decides how a component is fetched/checked.
 // `since` = first NVIDIA/DLSS release whose lib/ folder carries that DLL.
+// Optional DLSS 5 model for RTX 20/30/40 cards. NVIDIA's own nvngx_dlssnr.dll
+// only starts on Blackwell (RTX 50); older cards need a community-modified
+// 310.8 build, which is NOT signed by NVIDIA any more. It is never part of
+// "Download all", is fetched only after the person confirms a warning, and is
+// accepted only byte-for-byte: archive digest + file digest pinned below
+// (rhi-repo release dlssnr-310.8.SF-v2, published 2026-08-30, the build RHI and
+// Prism use for RTX 20-40). It lives in its own folder and is used for
+// installs only while switched on.
+const LEGACY_NR = {
+  id: 'dlssnr-legacy',
+  label: '310.8.SF-v2',
+  version: '310.8.2.0',
+  dir: 'legacy-nr',
+  file: 'nvngx_dlssnr.dll',
+  archive: ['nvngx_dlssnr_310.8.SF-v2.zip', 'https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.SF-v2/nvngx_dlssnr_310.8.SF-v2.zip', '1da35941894994eb087e017577829e492454e9bae3a6a9397027069ceb74955c'],
+  sha256: '6eb209e764f39872625debd6abaf45e2bb6322f6f270f781f70c059ae30b3927',
+  size: 165830144
+};
+const legacyNrPath = (payloadDir) => path.join(payloadDir, LEGACY_NR.dir, LEGACY_NR.file);
+// True when the pinned community build is present and unchanged.
+function legacyNrReady(payloadDir) {
+  const file = legacyNrPath(payloadDir);
+  return fs.existsSync(file) && sha256File(file) === LEGACY_NR.sha256;
+}
+function removeLegacyNr(payloadDir) {
+  rmrf(path.join(payloadDir, LEGACY_NR.dir));
+  hashCache.delete(path.resolve(legacyNrPath(payloadDir)).toLowerCase());
+}
+
 const NV_SOURCE = 'NVIDIA (GitHub NVIDIA/DLSS)';
 const COMPONENTS = [
   { id: 'streamline', name: 'NVIDIA Streamline (sl.*)', kind: 'streamline', source: 'GitHub RankFTW/rhi-repo · Streamline ' + STREAMLINE.version },
@@ -66,7 +95,9 @@ const COMPONENTS = [
   { id: 'renodx', name: 'RenoDX DLSS5 add-on', kind: 'renodx', source: 'GitHub RankFTW/rhi-repo · RenoDX ' + renodxRelease.CONSUMER.version },
   { id: 'renodx-sf', name: 'RenoDX multipass (DLSS Tool)', kind: 'renodx-sf', source: 'GitHub RankFTW/rhi-repo · RenoDX ' + renodxRelease.MULTIPASS.version },
   { id: 'feeder', name: 'DLSS5-Feeder', kind: 'feeder', source: 'GitHub jlrouzies-fr/DLSS5-Feeder · ' + feederRelease.version },
-  { id: 'reshade', name: 'ReShade (add-on build)', kind: 'reshade', source: 'reshade.me · ' + RESHADE.version }
+  { id: 'reshade', name: 'ReShade (add-on build)', kind: 'reshade', source: 'reshade.me · ' + RESHADE.version },
+  { id: LEGACY_NR.id, name: 'DLSS 5 model for RTX 20/30/40 (community build)', kind: 'legacy-nr', optional: true,
+    source: 'GitHub RankFTW/rhi-repo · ' + LEGACY_NR.label + ' · modified, not signed by NVIDIA' }
 ];
 const byId = (id) => COMPONENTS.find((c) => c.id === id);
 
@@ -320,6 +351,7 @@ function componentFiles(c, payloadDir) {
       for (const [rel, , sha] of pins.feederExtras) list.push([path.join(fd, ...rel.split('/')), sha]);
       return list;
     }
+    case 'legacy-nr': return [[legacyNrPath(payloadDir), LEGACY_NR.sha256]];
     case 'reshade': return [[path.join(payloadDir, RESHADE.file), RESHADE.sha256]]
       .concat(Object.entries(pins.reshadeVulkan).map(([f, sha]) => [path.join(payloadDir, 'reshade-vulkan', f), sha]));
     default: return [];
@@ -337,7 +369,7 @@ function nrModels(version) {
 function statusOne(c, payloadDir, tags) {
   const files = componentFiles(c, payloadDir);
   const present = files.filter(([f]) => fs.existsSync(f));
-  const row = { id: c.id, name: c.name, source: c.source, kind: c.kind, downloadable: c.kind !== 'import', version: null, status: 'missing', note: null };
+  const row = { id: c.id, name: c.name, source: c.source, kind: c.kind, downloadable: c.kind !== 'import', optional: Boolean(c.optional), version: null, status: 'missing', note: null };
   if (!present.length) return row;
   if (c.kind === 'dlss' || c.kind === 'import') {
     row.version = pe.getFileVersion(files[0][0]);
@@ -365,6 +397,11 @@ function statusOne(c, payloadDir, tags) {
     case 'renodx-sf': row.version = ok ? renodxRelease.MULTIPASS.version : pe.getFileVersion(present[0][0]); break;
     case 'feeder': row.version = ok ? feederRelease.version : null; break;
     case 'reshade': row.version = ok ? RESHADE.version : pe.getFileVersion(path.join(payloadDir, 'reshade-vulkan', 'ReShade64.dll')); break;
+    case 'legacy-nr':
+      row.version = ok ? LEGACY_NR.label : pe.getFileVersion(present[0][0]);
+      row.models = 'A';
+      if (ok) row.note = { key: 'compNoteLegacyNr', params: {} };
+      break;
   }
   return row;
 }
@@ -372,12 +409,14 @@ function statusOne(c, payloadDir, tags) {
 function status(payloadDir, opts = {}) {
   const tags = knownTags(opts);
   const rows = COMPONENTS.map((c) => statusOne(c, payloadDir, tags));
+  // Optional components never make the set incomplete.
+  const needed = rows.filter((r) => !r.optional);
   return {
     payloadDir,
     components: rows,
-    complete: rows.every((r) => r.status !== 'missing'),
-    allOk: rows.every((r) => r.status === 'ok'),
-    missing: rows.filter((r) => r.status === 'missing').map((r) => r.id)
+    complete: needed.every((r) => r.status !== 'missing'),
+    allOk: needed.every((r) => r.status === 'ok'),
+    missing: needed.filter((r) => r.status === 'missing').map((r) => r.id)
   };
 }
 
@@ -539,6 +578,27 @@ async function downloadReShade(payloadDir, tmp, progress) {
   return { version: RESHADE.version };
 }
 
+// The community build for RTX 20/30/40. opts.acceptUnsigned must be true: the
+// renderer sets it only after the person confirmed the warning. No signature
+// check is possible (the file is modified), so it is pinned twice instead.
+async function downloadLegacyNr(payloadDir, tmp, progress, opts) {
+  if (!opts || opts.acceptUnsigned !== true) throw fail('compErrLegacyNrConsent', {}, 'The community DLSS 5 build needs your confirmation first.');
+  const [name, url, sha] = LEGACY_NR.archive;
+  const zip = path.join(tmp, name);
+  await fetchVerified(url, sha, zip, (g, t) => progress({ phase: 'download', received: g, total: t }), LEGACY_NR.label);
+  progress({ phase: 'verify' });
+  const out = path.join(tmp, 'x');
+  await extract(zip, { dir: out });
+  const src = findFile(out, LEGACY_NR.file);
+  if (!src) throw missingInArchive(LEGACY_NR.label, LEGACY_NR.file);
+  checkPinned(src, LEGACY_NR.sha256, LEGACY_NR.file);
+  // The archive marks the DLL read-only; a read-only copy in a game folder
+  // could not be removed again by Restore.
+  try { fs.chmodSync(src, 0o666); } catch { /* best effort */ }
+  placeFile(src, legacyNrPath(payloadDir));
+  return { version: LEGACY_NR.label };
+}
+
 // download(payloadDir, id, opts, progressCb) - opts.tag ('v310.9.16') picks
 // the NVIDIA release for dlss/dlssd/dlssg; opts.cacheDir caches the release
 // list; opts.helper overrides the nv-drs.exe path.
@@ -561,6 +621,7 @@ async function download(payloadDir, id, opts = {}, progressCb = () => {}) {
         [path.join('feeder', 'host64', renodxRelease.MULTIPASS.file)]); break;
       case 'feeder': result = await downloadFeeder(payloadDir, tmp, progress); break;
       case 'reshade': result = await downloadReShade(payloadDir, tmp, progress); break;
+      case 'legacy-nr': result = await downloadLegacyNr(payloadDir, tmp, progress, opts); break;
       default: throw fail('compErrUnknown', { id }, 'Unsupported component: ' + id);
     }
     progress({ phase: 'done', version: result.version });
@@ -579,6 +640,7 @@ async function ensureAll(payloadDir, opts = {}, progressCb = () => {}) {
   const before = status(payloadDir, opts);
   const results = [];
   for (const row of before.components) {
+    if (row.optional) { results.push({ id: row.id, ok: true, skipped: true, code: 'compOptional' }); continue; }
     if (!row.downloadable) { results.push({ id: row.id, ok: row.status !== 'missing', skipped: true, code: row.status === 'missing' ? 'compNeedsImport' : 'compPresent' }); continue; }
     const pick = opts.versions && opts.versions[row.id];
     const wanted = pick && row.version ? cmpVer(row.version.split('.').slice(0, 3).join('.'), pick) !== 0 : Boolean(pick);
@@ -646,7 +708,7 @@ function legacyDirs(extra = []) {
 function legacyOffer(payloadDir, legacyDir, opts = {}) {
   const mine = status(payloadDir, opts).components;
   const theirs = status(legacyDir, opts).components;
-  return mine.filter((r) => r.status !== 'ok').map((r) => {
+  return mine.filter((r) => r.status !== 'ok' && !r.optional).map((r) => {
     const t = theirs.find((x) => x.id === r.id);
     const usable = t && (t.kind === 'dlss' || t.kind === 'import' ? t.status !== 'missing' : t.status === 'ok');
     return usable ? { id: r.id, version: t.version } : null;
@@ -665,6 +727,7 @@ async function migrate(payloadDir, legacyDir, opts = {}, progressCb = () => {}) 
     const c = byId(row.id);
     const progress = (p) => { try { progressCb({ id: row.id, ...p }); } catch {} };
     if (row.status === 'ok') { results.push({ id: row.id, ok: true, skipped: true, code: 'compUpToDate' }); continue; }
+    if (row.optional) { results.push({ id: row.id, ok: true, skipped: true, code: 'compOptional' }); continue; }
     progress({ phase: 'verify' });
     try {
       const src = componentFiles(c, legacyDir);
@@ -702,7 +765,7 @@ async function migrate(payloadDir, legacyDir, opts = {}, progressCb = () => {}) 
 }
 
 module.exports = {
-  COMPONENTS, STREAMLINE, RESHADE, DLSS_REPO, NR_MIN,
+  COMPONENTS, STREAMLINE, RESHADE, DLSS_REPO, NR_MIN, LEGACY_NR, legacyNrPath, legacyNrReady, removeLegacyNr,
   status, download, ensureAll, importNr, migrate, legacyDirs, legacyOffer,
   dlssVersions, dlssTags, sigcheck, cmpVer, nrModels, zipFromSetup
 };

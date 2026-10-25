@@ -1,76 +1,12 @@
 {
-  "name": "dlss-aio-build",
-  "private": true,
-  "version": "3.0.8",
-  "description": "Build workspace for DLSS AiO Swapper by Machiavelli (the app itself lives in ./app)",
+  "name": "dlss5-swapper",
+  "productName": "DLSS AiO Swapper by Machiavelli",
+  "version": "3.0.12",
+  "description": "Installs and manages DLSS 5 Neural Rendering in your games and sets NVIDIA DLSS driver settings per game.",
+  "main": "main.js",
   "author": "Machiavelli (machiavelli31)",
   "license": "MIT",
-  "scripts": {
-    "helper": "node tools/build-helper.js",
-    "start": "npm run helper && electron app",
-    "dist": "npm run helper && electron-builder --win nsis portable --publish never"
-  },
-  "devDependencies": {
-    "electron": "33.4.11",
-    "electron-builder": "^25.1.8"
-  },
-  "build": {
-    "appId": "com.machiavelli31.dlssaio",
-    "productName": "DLSS AiO Swapper by Machiavelli",
-    "copyright": "Copyright (c) 2026 Machiavelli",
-    "directories": {
-      "app": "app",
-      "buildResources": "build",
-      "output": "dist"
-    },
-    "files": [
-      "**/*",
-      "!payload{,/**/*}",
-      "!**/*.map"
-    ],
-    "extraResources": [
-      {
-        "from": "build/nv-drs.exe",
-        "to": "nv-drs.exe"
-      },
-      {
-        "from": "LICENSE",
-        "to": "LICENSE.txt"
-      },
-      {
-        "from": "app/THIRD_PARTY_NOTICES.md",
-        "to": "THIRD_PARTY_NOTICES.md"
-      }
-    ],
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "artifactName": "DLSS-AiO-Swapper-${version}-${arch}-${target}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "shortcutName": "DLSS AiO Swapper",
-      "license": "LICENSE",
-      "artifactName": "DLSS-AiO-Swapper-Setup-${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "DLSS-AiO-Swapper-${version}-portable.${ext}"
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "machiavelli31",
-        "repo": "DLSS-AiO-Swapper"
-      }
-    ]
-  },
-  "allowScripts": {
-    "electron@33.4.11": true
+  "dependencies": {
+    "extract-zip": "^2.0.1"
   }
 }

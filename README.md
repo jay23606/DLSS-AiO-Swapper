@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="../../releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/machiavelli31/DLSS-AiO-Swapper?label=download&style=for-the-badge&color=a855f7"></a>
-  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/machiavelli31/DLSS-AiO-Swapper/total?style=for-the-badge&color=22d3ee"></a>
+  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/machiavelli31/DLSS-AiO-Swapper/total?style=for-the-badge&color=22d3ee&label=downloads&cacheSeconds=3600"></a>
   <a href="../../stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/machiavelli31/DLSS-AiO-Swapper?style=for-the-badge&color=f5c542"></a>
 </p>
 
@@ -85,7 +85,7 @@ The same settings as "DLSS Override" in the NVIDIA app, laid out clearly on each
 ### Components & DLLs
 - Download **DLSS SR / RR / FG** straight from NVIDIA – any published version.
 - **Streamline, RenoDX, DLSS5-Feeder, ReShade, OptiScaler, dgVoodoo and LumeniteFX** are fetched automatically from their original sources – only when a game actually needs them.
-- **Security:** every NVIDIA file is checked for a valid *NVIDIA Corporation* signature before use, every other download against a pinned SHA-256 hash. Unsigned or modified files are rejected.
+- **Security:** every NVIDIA file is checked for a valid *NVIDIA Corporation* signature before use, every other download against a pinned SHA-256 hash. Unsigned or modified files are rejected – the one exception is the optional, opt-in RTX 20/30/40 build below, which is pinned by SHA-256 instead.
 
 ### Also
 - Finds your games automatically (Steam, Epic, Ubisoft, GOG, custom folders) – with cover art.
@@ -104,9 +104,11 @@ The repository and the installer contain **not a single third-party DLL**. The a
 | DLSS5-Feeder 1.19.0 | [jlrouzies-fr/DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder) | SHA-256 |
 | ReShade 6.8.0 (add-on build) | [reshade.me](https://reshade.me) | SHA-256 |
 | OptiScaler DLSS-NR builds | [Dagherbou/OptiScaler_DLSSNR](https://github.com/Dagherbou/OptiScaler_DLSSNR), [jlrouzies-fr/OptiScaler-DLSSNR-PreSR-Multipass](https://github.com/jlrouzies-fr/OptiScaler-DLSSNR-PreSR-Multipass) | SHA-256 |
-| dgVoodoo 2.87.5 | [dege-diosg/dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2) | SHA-256 |
+| dgVoodoo 2.87.6 | [dege-diosg/dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2) | SHA-256 |
 | LumeniteFX shaders | [umar-afzaal/LumeniteFX](https://github.com/umar-afzaal/LumeniteFX) | pinned commit |
 | **DLSS 5 runtime `nvngx_dlssnr.dll`** | **not included, no download** – see below | NVIDIA signature |
+| OptiScaler F5 + vendor-neutral DLSS 5 port (AMD / Intel only) | [janblade/OptiScaler-F5-DLSSNR-Multipass](https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass) | SHA-256 |
+| *Optional:* DLSS 5 model for RTX 20/30/40 (`310.8.SF-v2`, community-modified) | [RankFTW/rhi-repo](https://github.com/RankFTW/rhi-repo/releases/tag/dlssnr-310.8.SF-v2) – only after you confirm a warning | SHA-256 (archive + DLL); **not** NVIDIA-signed |
 
 ### What about the DLSS 5 DLL (`nvngx_dlssnr.dll`)?
 **The brand-new DLSS 5 DLL (310.9.16 with Preset B) is not included in the app yet.** NVIDIA has not publicly released the DLSS 5 runtime so far – it only ships with games that officially support DLSS 5 (currently NBA 2K27). That's why it is neither hosted nor linked here.
@@ -116,6 +118,28 @@ The repository and the installer contain **not a single third-party DLL**. The a
 - The app only accepts files with a **valid NVIDIA signature** – tampered or fake DLLs are rejected. It also shows you the version:
   - **310.9.16 or newer** → contains Preset **A and B** (recommended)
   - **310.8.x** → Preset A only
+
+### RTX 20 / 30 / 40 cards
+
+NVIDIA's DLSS 5 model **only starts on RTX 50** (Blackwell). On older cards the add-on shows *"NR runtime did not start"*. The community patched NVIDIA's older 310.8 model so it runs on RTX 20–40 – that's what other DLSS 5 tools use there, too.
+
+Since 3.0.9 the app offers it as an **optional** component: **Components → DLSS 5 model for RTX 20/30/40 (community build) → Download…**
+
+- Off by default, never part of *Download all*, and only downloaded after a warning you have to confirm.
+- It is **modified and therefore not signed by NVIDIA** – the app can't verify who changed it. It only accepts the exact build pinned in the app (archive SHA-256 `1da35941…`, DLL SHA-256 `6eb209e7…`, the same file RHI and Prism use).
+- **Model A only**, and noticeably slower on older cards (often around half the frame rate).
+- On an RTX 20–40 it is switched on automatically after the download; on an RTX 50 it stays off. Switch back with **Use NVIDIA's model** or **Remove** it. Installed games change on the next install or with **Update installed DLSS 5**.
+
+### AMD Radeon / Intel Arc (experimental)
+
+NVIDIA's DLSS 5 runtime needs NVIDIA's driver, so on AMD and Intel it can't start at all. Since 3.0.9 the app detects an AMD or Intel GPU and switches to a **vendor-neutral port** by janblade ([OptiScaler F5](https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass), GPL-3.0): it runs the DLSS 5 network itself on DirectX 12 compute + DirectML.
+
+- **The only component you need** is NVIDIA's **original, signed** `nvngx_dlssnr.dll` **310.9 or newer** – import it under Components. Everything else (Streamline, DLSS SR/RR/FG, RenoDX, Feeder, ReShade) is NVIDIA-only. In **Components** pick **Graphics card: AMD Radeon / Intel Arc** (preselected on those PCs) and the list shows just that one row. OptiScaler F5 and the port are downloaded automatically on your first install. You also need the Microsoft Visual C++ runtime (x64).
+- On a game's page the route **DLSS 5 for AMD / Intel (experimental)** is preselected; the NVIDIA-only routes are greyed out. It runs the small model (**B**); the A/B switch is not offered.
+- DirectX 12 games work best; DirectX 11 / Vulkan go through OptiScaler's D3D12 bridge. In game, turn on **DLSS, FSR or XeSS** (any quality) and press **Insert** – the status line should say *Model backend: vendor-neutral port*.
+- Everything is downloaded from janblade's GitHub release and checked against pinned SHA-256s. **Restore** removes it like any other route.
+- **Confirmed working on a real Radeon** (The Witcher 3, DX12) – but it is **expensive**: without NVIDIA's FP8 tensor cores the network runs on DirectML, and in that test the frame rate dropped from about 130 to 25 fps. To get speed back, open **Insert → Neural Rendering**: *Post-SR Presets → Potato* (model at 50 % resolution), *NR Options → Reuse detail* (model every other frame), *Run the model before Super Resolution* plus FSR on Performance, or *Compress screen edges*. How much that brings depends a lot on the card. Speed reports welcome: set `prof=1` in `nr_port.ini`, play a minute, attach `nr_port.log` and `OptiScaler.log`.
+- Detection wrong? Start the app with the environment variable `DLSS_AIO_FORCE_GPU=amd`, `intel` or `nvidia`.
 
 ## HDR mods and extra add-ons per game
 
@@ -132,7 +156,9 @@ Since driver **621.01** lecram's DLSS 5 add-on (8.5 and 10.8) can crash games ri
 
 ## Own add-on builds (paid lecram / ShortFuse builds)
 
-Newer RenoDX DLSS 5 add-ons are often sold by their authors (lecram's builds on Buy Me a Coffee, ShortFuse's on Patreon). The app never downloads or shares those – but if you bought one, import it once under **Components → Own add-on** (`.addon64` or the `.zip` you got). It is checked (64-bit ReShade add-on, right file name), scanned by Microsoft Defender, copied into the app's folder and from then on used for every install. **Update installed DLSS 5** in the Games tab puts it into all games that already have DLSS 5 – and it only ever replaces files the app put there itself, so a build you placed by hand is never downgraded.
+Newer lecram builds (10.x / v11 / v12) are sold by their author on Buy Me a Coffee; ShortFuse's DLSS Tool is free and already built in. The app never downloads or shares paid builds – but if you bought one, import it once under **Components → Own add-on** (`.addon64` or the `.zip` you got). It is checked (64-bit ReShade add-on, right file name), scanned by Microsoft Defender, copied into the app's folder and from then on used for every install. **Update installed DLSS 5** in the Games tab puts it into all games that already have DLSS 5 – and it only ever replaces files the app put there itself, so a build you placed by hand is never downgraded.
+
+**lecram v11 / v12** is called `dlss5-nr.addon64` – import the *Add-on only* download (not lecram's own installer). It keeps that file name in the game; the old `renodx-dlss5.addon64` is moved into the backup automatically. Because the name is new, click **Install DLSS 5** once per game (after that, *Update installed DLSS 5* keeps them current). It is used by the ReShade route **and the Feeder route** (games without DLSS), and **Restore** also removes the runtime copy (`dlss5-nr-runtime\`, ~500 MB) that v11/v12 creates next to the game.
 
 ## Feature requests and bugs
 
@@ -144,7 +170,7 @@ Newer RenoDX DLSS 5 add-ons are often sold by their authors (lecram's builds on 
 After the malware rumours around the discontinued DLSS 5 Swapper, here is exactly what this app does and doesn't do:
 
 - **Nothing third-party is bundled.** The installer contains the app and one small helper (`nv-drs.exe`, built from [`tools/NvDrs.cs`](tools/NvDrs.cs) in this repo) – no DLLs, no ReShade, no add-ons.
-- **Every download is pinned.** Each file is checked against a fixed SHA-256 (identical to the digest the original authors publish on their GitHub releases) or must carry a valid *NVIDIA Corporation* signature. Anything else is rejected.
+- **Every download is pinned.** Each file is checked against a fixed SHA-256 (identical to the digest the original authors publish on their GitHub releases) or must carry a valid *NVIDIA Corporation* signature. Anything else is rejected. (The optional RTX 20/30/40 build is modified and can't carry NVIDIA's signature – it is pinned by SHA-256, off by default and only downloaded after a warning.)
 - **The only program it ever runs is the official ReShade setup** – and it re-checks its SHA-256 right before starting it, so a file swapped on disk afterwards is refused.
 - **No access to browsers, cookies, passwords or wallets. No Defender exclusions, no autostart entries, no scheduled tasks, no telemetry.** The app only talks to the download sources listed above and to the GitHub API for the update check.
 - Every release lists the SHA-256 of both executables in `SHA256SUMS.txt`. Only download from [this repository's releases](../../releases) – copies elsewhere are not from me.

@@ -11,6 +11,8 @@ before use (`src/core/components.js`, pins in `src/core/component-pins.js`):
 | NVIDIA DLSS SR / RR / FG (`nvngx_dlss*.dll`) | https://github.com/NVIDIA/DLSS (release tags, `lib/Windows_x86_64/rel`) | NVIDIA Authenticode signature, file version = tag, SHA-256 for v310.9.16 |
 | NVIDIA Streamline 2.13 (`sl.*.dll`) | https://github.com/RankFTW/rhi-repo/releases (streamline-2.13.0.0) | archive + per-file SHA-256, NVIDIA signature |
 | DLSS 5 model (`nvngx_dlssnr.dll`) | not publicly downloadable - imported by the user | NVIDIA signature, product "NVIDIA DLSSNR", version >= 310.8 |
+| OptiScaler F5 0.1.34 + vendor-neutral DLSS 5 port (AMD / Intel route, GPL-3.0) | https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass/releases (v0.1.34) - downloaded only when a game is set up on an AMD/Intel GPU | archive SHA-256 (GitHub digest) + per-file SHA-256 of the port |
+| Optional: DLSS 5 model for RTX 20/30/40 (`310.8.SF-v2`, community-modified NVIDIA DLL) | https://github.com/RankFTW/rhi-repo/releases (dlssnr-310.8.SF-v2) - only after the user confirms a warning | archive + file SHA-256; not NVIDIA-signed (modified) |
 | RenoDX DLSS5 8.5.0-rc10 / DLSS Tool SF 26.1003.2350 | https://github.com/RankFTW/rhi-repo/releases | archive + file SHA-256 |
 | DLSS5-Feeder 1.19.0 | https://github.com/jlrouzies-fr/DLSS5-Feeder/releases | archive + per-file SHA-256 |
 | VORT shaders, ReShade headers (Feeder dependencies) | vortigern11/vort_Shaders @ b410b9f, crosire/reshade-shaders @ ee30868 | per-file SHA-256 |
@@ -81,7 +83,7 @@ https://github.com/dege-diosg/dgVoodoo2
 https://dege.freeweb.hu/dgVoodoo2/ReadmeGeneral/
 
 Its binaries are not bundled with this application. When a DX8/DX9 installation
-is requested, the application downloads the complete official v2.87.5 archive,
+is requested, the application downloads the complete official 2.87.6 archive,
 verifies its pinned SHA-256 checksum and retains the original documentation
 and licence in its component cache. dgVoodoo2 remains under its author's
 licence, not this application's MIT licence.

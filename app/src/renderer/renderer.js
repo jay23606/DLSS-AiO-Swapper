@@ -647,7 +647,10 @@ async function load() {
   setStatus(t('scanning'), 5);
   state.games = await window.lab.library();
   state.recents = await window.lab.recents();
-  state.newDlss = (await window.lab.details(state.games[0] ? state.games[0].dir : '')).newDlss;
+  // Only for the "newer DLSS" hint: a failure here must never leave the
+  // library empty until a filter click redraws it.
+  try { state.newDlss = (await window.lab.details(state.games[0] ? state.games[0].dir : '')).newDlss; }
+  catch (err) { log(t('sheetFailedLog', { name: state.games[0] ? state.games[0].name : '?', reason: err && err.message })); }
   renderGames();
   renderRecent();
   log(`Found ${state.games.length} games across ${new Set(state.games.map((g) => g.launcher)).size} sources`);
@@ -841,6 +844,7 @@ function installOptions(d, pick, dir) {
   const route = selectedRoute(d, pick, dir, api.api);
   const routes = routesFor(pick);
   const opti = route === 'optiscaler';
+  const neutral = window.installRoutes.isVendorNeutral();
   const optiReason = window.installRoutes.optiReason(window.renderingApi.effective(pick, pick.apiOverride || 'auto'));
   const apiField = `<label class="api-field"><span>${t('fApi')}</span><select id="apiChoice" aria-describedby="apiHint">
     <option value="auto"${!pick.apiOverride || pick.apiOverride === 'auto' ? ' selected' : ''}>${esc(t('apiAutomatic', pick.apiLabel || t('unknownApi')))}</option>
@@ -854,8 +858,8 @@ function installOptions(d, pick, dir) {
     <div class="install-options" data-title="${esc(t('sheetSetup'))}">
       ${apiField}
       <label><span>${t('fBackend')}</span><select id="backendChoice" aria-describedby="backendHint">
-        <option value="reshade"${opti ? '' : ' selected'}>${t('backendReShade')}</option>
-        <option value="optiscaler"${opti ? ' selected' : ''}${optiReason ? ' disabled' : ''}>OptiScaler DLSS-NR (no ReShade)</option>
+        <option value="reshade"${opti ? '' : ' selected'}${neutral ? ' disabled' : ''}>${t('backendReShade')}${neutral ? ` – ${t('backendNeedsNvidia')}` : ''}</option>
+        <option value="optiscaler"${opti ? ' selected' : ''}${optiReason ? ' disabled' : ''}>${neutral ? esc(t('routePort')) : 'OptiScaler DLSS-NR (no ReShade)'}</option>
       </select></label>
       ${!opti ? `<label><span>${t('fRoute')}</span><select id="routeChoice">${routes.filter(item => item !== 'optiscaler').map((item) =>
         `<option value="${item}"${item === route ? ' selected' : ''}>${t(item === 'feeder' ? 'routeFeeder' : item === 'renodx' ? 'routeRenodx' : item === 'combo' ? 'routeCombo' : 'routeNative')}</option>`).join('')}</select></label>
@@ -868,7 +872,7 @@ function installOptions(d, pick, dir) {
     </div>
     ${notesBox([
       `<div class="emu-note" id="apiHint"><span>${t('apiOverrideHint')}</span>${api.api === 'vulkan' && !opti ? `<span>${t('apiVulkanHint')}</span>` : ''}</div>`,
-      `<div class="emu-note backend-note" id="backendHint"><span>${t(opti ? 'optiHint' : 'backendHint')}</span>
+      `<div class="emu-note backend-note" id="backendHint"><span>${t(neutral ? 'portHint' : opti ? 'optiHint' : 'backendHint')}</span>
         ${optiReason ? `<span>${t(optiReason)}</span>` : ''}
         ${route === 'native' ? `<span>${t('nativeEffectsHint')}</span>` : ''}
         ${route === 'renodx' ? `<span>${t('routeRenodxHint')}</span>` : ''}
@@ -940,13 +944,26 @@ async function openSheet(dir, keepLog = false) {
   if (!keepLog) jobLines = [];
 
   $('overlay').classList.remove('hidden');
-  $('sheet').innerHTML = '<div class="pad" style="color:var(--dim)">Reading the folder…</div>';
+  $('sheet').innerHTML = `<div class="pad" style="color:var(--dim)">${esc(t('sheetReading'))}</div>`;
 
-  const [d, art] = await Promise.all([
-    window.lab.details(dir),
-    window.lab.artFetch(dir, g.name, g.appid)
-  ]);
+  // Artwork comes from Steam's servers and is only decoration: a slow or
+  // blocked connection must not keep the sheet on "Reading the folder…".
+  // It keeps loading in the background and is cached for the next open.
+  const artLate = window.lab.artFetch(dir, g.name, g.appid).catch(() => null);
+  let d;
+  let art;
+  try {
+    [d, art] = await Promise.all([
+      window.lab.details(dir),
+      Promise.race([artLate, new Promise((resolve) => setTimeout(() => resolve(null), 4000))])
+    ]);
+  } catch (err) {
+    if (sheetGame !== g) return;
+    sheetFailed(g, err);
+    return;
+  }
   if (sheetGame !== g) return;
+  if (!d || !Array.isArray(d.exes)) { sheetFailed(g, new Error((d && (d.message || d.reason)) || 'no folder details')); return; }
   sheetDetails = d;
   if (!exeChoice.has(dir) && d.installedExe) {
     const installed = d.exes.find((item) => item.rel.toLowerCase() === String(d.installedExe).toLowerCase());
@@ -1126,6 +1143,14 @@ function wireNrPreset(d, pick) {
   if (!pick || !window.lab.drsGet) return;
   const anchor = $('doInstall')?.closest('.sheet-actions') || $('doInstall')?.parentElement;
   if (!anchor) return;
+  // AMD / Intel: no NVIDIA driver profile, and the port always runs model B.
+  if (window.installRoutes.isVendorNeutral()) {
+    const box = document.createElement('div');
+    box.className = 'nv-dlss-box';
+    box.innerHTML = `<div class="install-options" data-title="${esc(t('nrModelTitle'))}"><div class="emu-note"><span>${esc(t('portModelFixed'))}</span></div></div>`;
+    anchor.insertAdjacentElement('beforebegin', box);
+    return;
+  }
   const exe = String(pick.rel || pick.path || '').split(/[\\/]/).pop();
   const nr = (d.files || []).filter((f) => /(^|[\\/])nvngx_dlssnr\.dll$/i.test(f.rel || '') && !/(^|[\\/])_(hermes_|dlss5_backup)/i.test(f.rel || ''))[0];
   const nrVersion = nr && nr.version ? String(nr.version).replace(/,\s*/g, '.') : null;
@@ -1255,7 +1280,42 @@ const compMsg = (r) => {
 const compName = (row) => { const key = 'compName_' + row.id; const text = t(key); return text !== key ? text : row.name; };
 const compTag = (version) => (version ? 'v' + String(version).split('.').slice(0, 3).join('.') : null);
 
+// Which card the Components page lists parts for. It starts on the detected
+// GPU; a different pick is remembered so someone can look up what a friend's
+// PC needs. It only filters this page - installs always follow the detected
+// card (main decides the route from the hardware, not from this choice).
+// AMD Radeon / Intel Arc run DLSS 5 through OptiScaler's vendor-neutral port,
+// which needs nothing but NVIDIA's DLSS 5 model 310.9+; OptiScaler and the
+// port are fetched by the install itself.
+const COMP_GPU_KEY = 'aio.compGpu';
+const COMP_AMD_IDS = new Set(['dlssnr']);
+const COMP_PORT_MIN = '310.9';
+const compDetectedGpu = () => (state.gpuMode && state.gpuMode.vendorNeutral ? 'amd' : 'nvidia');
+function compGpu() {
+  try { const v = localStorage.getItem(COMP_GPU_KEY); if (v === 'nvidia' || v === 'amd') return v; } catch { /* storage off */ }
+  return compDetectedGpu();
+}
+function setCompGpu(value) {
+  try {
+    if (value === compDetectedGpu()) localStorage.removeItem(COMP_GPU_KEY);
+    else localStorage.setItem(COMP_GPU_KEY, value);
+  } catch { /* storage off: the pick lasts for this session only */ }
+  comp.gpuPick = value;
+}
+const compGpuNow = () => comp.gpuPick || compGpu();
+const compRelevant = (row) => compGpuNow() === 'nvidia' || COMP_AMD_IDS.has(row.id);
+function compVersionAtLeast(version, min) {
+  const a = String(version || '0').split('.').map(Number);
+  const b = String(min).split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = (a[i] || 0) - (b[i] || 0);
+    if (d) return d > 0;
+  }
+  return true;
+}
+
 function compBadge(row) {
+  if (row.optional && row.status === 'missing') return `<span class="comp-badge optional">${esc(t('compOptional'))}</span>`;
   if (comp.progress[row.id] && comp.busy) return `<span class="comp-badge working">${esc(t('compStatusWorking'))}</span>`;
   const key = { ok: 'compStatusOk', outdated: 'compStatusOutdated', missing: 'compStatusMissing' }[row.status] || 'compStatusMissing';
   return `<span class="comp-badge ${esc(row.status)}">${esc(t(key))}</span>`;
@@ -1281,13 +1341,30 @@ function renderComponentTable() {
   if (!table || !s) return;
   if (!s.ok) { table.innerHTML = `<tr><td class="comp-err">${esc(compMsg(s))}</td></tr>`; return; }
   const head = `<tr><th>${esc(t('compColName'))}</th><th>${esc(t('compColVersion'))}</th><th>${esc(t('compColStatus'))}</th><th></th></tr>`;
-  const rows = s.components.map((row) => {
+  const amd = compGpuNow() === 'amd';
+  const rows = s.components.filter(compRelevant).map((row) => {
     const source = row.kind === 'import' ? t('compSourceImport') : row.source;
     const note = row.note ? t(row.note.key, row.note.params || {}) : '';
     const err = comp.errors[row.id];
     let action;
-    if (row.kind === 'import') {
-      action = `<button class="ghost sm" data-comp-act="import" ${comp.busy ? 'disabled' : ''}>${esc(t('compImportNr'))}</button>`;
+    let extra = '';
+    const dis = comp.busy ? 'disabled' : '';
+    if (row.kind === 'import' && amd) {
+      extra = row.status !== 'missing' && !compVersionAtLeast(row.version, COMP_PORT_MIN)
+        ? t('compAmdNrTooOld', { version: row.version || '?', min: COMP_PORT_MIN })
+        : t('compAmdNrNeeded', { min: COMP_PORT_MIN });
+    } else if (row.kind === 'import' && s.gpu && !s.gpu.blackwell) extra = t('compNoteNrRtx50', { gpu: s.gpu.names });
+    if (row.kind === 'legacy-nr') {
+      const active = Boolean(s.legacyNr && s.legacyNr.active);
+      if (row.status === 'ok') extra = t(active ? 'compLegacyNrOn' : 'compLegacyNrOff');
+      else if (s.gpu && !s.gpu.blackwell) extra = t('compLegacyNrForYou', { gpu: s.gpu.names });
+      else extra = t('compLegacyNrIntro');
+      action = row.status === 'ok'
+        ? `<button class="${active ? 'ghost' : 'glass-btn'} sm" data-comp-act="legacy-${active ? 'off' : 'on'}" ${dis}>${esc(t(active ? 'compLegacyNrUseOfficial' : 'compLegacyNrUse'))}</button>` +
+          `<button class="ghost sm" data-comp-act="legacy-remove" ${dis}>${esc(t('caRemove'))}</button>`
+        : `<button class="ghost sm" data-comp-act="legacy-download" ${dis}>${esc(t('compDownload'))}…</button>`;
+    } else if (row.kind === 'import') {
+      action = `<button class="ghost sm" data-comp-act="import" ${dis}>${esc(t('compImportNr'))}</button>`;
     } else {
       let select = '';
       const list = row.kind === 'dlss' && comp.versions && comp.versions.ok && comp.versions[row.id];
@@ -1301,15 +1378,37 @@ function renderComponentTable() {
     return `<tr data-comp-row="${esc(row.id)}">
       <td><div class="comp-name">${esc(compName(row))}</div><div class="comp-sub">${esc(source)}</div></td>
       <td>${esc(row.version || '–')}</td>
-      <td>${compBadge(row)}${note ? `<div class="comp-sub">${esc(note)}</div>` : ''}<div class="comp-prog" data-comp-prog="${esc(row.id)}">${esc(compProgressText(comp.progress[row.id]))}</div>${err ? `<div class="comp-err">${esc(err)}</div>` : ''}</td>
+      <td>${compBadge(row)}${note ? `<div class="comp-sub">${esc(note)}</div>` : ''}${extra ? `<div class="comp-sub comp-warn">${esc(extra)}</div>` : ''}<div class="comp-prog" data-comp-prog="${esc(row.id)}">${esc(compProgressText(comp.progress[row.id]))}</div>${err ? `<div class="comp-err">${esc(err)}</div>` : ''}</td>
       <td class="comp-act">${action}</td></tr>`;
   }).join('');
   table.innerHTML = head + rows;
 }
 
+function paintCompGpu() {
+  const pick = compGpuNow();
+  for (const b of document.querySelectorAll('[data-comp-gpu]')) {
+    const on = b.dataset.compGpu === pick;
+    b.className = (on ? 'glass-btn' : 'ghost') + ' sm';
+    b.setAttribute('aria-checked', String(on));
+    b.disabled = comp.busy;
+  }
+  const amd = pick === 'amd';
+  const notes = [];
+  if (amd) notes.push(t('compGpuAmdNote', { min: COMP_PORT_MIN }));
+  if (state.gpuMode && pick !== compDetectedGpu()) {
+    notes.push(t('compGpuOtherNote', { gpu: state.gpuMode.names || t(compDetectedGpu() === 'amd' ? 'compGpuAmd' : 'compGpuNvidia') }));
+  }
+  if ($('compGpuNote')) $('compGpuNote').textContent = notes.join(' ');
+  // Nothing on the AMD / Intel list is a download, and own RenoDX add-ons
+  // need ReShade + an NVIDIA card.
+  if ($('compAll')) $('compAll').classList.toggle('hidden', amd);
+  if ($('ownAddon')) $('ownAddon').classList.toggle('hidden', amd);
+}
+
 function paintComponents() {
   const s = comp.status;
   if ($('compIntro')) $('compIntro').textContent = t('compIntro', { dir: s && s.payloadDir });
+  paintCompGpu();
   const box = $('compMigrateBox');
   if (box) {
     const legacy = s && s.ok && s.legacy;
@@ -1330,11 +1429,15 @@ function paintCompBanner() {
   const s = comp.status;
   const banner = $('compBanner');
   if (!banner) return;
-  const show = Boolean(s && s.ok && s.missing && s.missing.length && !s.activeComplete);
+  const amd = compGpuNow() === 'amd';
+  const missing = s && s.ok && Array.isArray(s.missing) ? s.missing.filter((id) => !amd || COMP_AMD_IDS.has(id)) : [];
+  // NVIDIA: a complete legacy payload still counts. AMD / Intel: only the
+  // model matters, wherever the rest comes from.
+  const show = Boolean(missing.length && (amd || !s.activeComplete));
   banner.classList.toggle('hidden', !show);
   if (show) {
     $('compBannerText').textContent = t('compBannerText', {
-      list: s.missing.map((id) => compName(s.components.find((r) => r.id === id) || { id, name: id })).join(', ')
+      list: missing.map((id) => compName(s.components.find((r) => r.id === id) || { id, name: id })).join(', ')
     });
   }
 }
@@ -1354,7 +1457,7 @@ async function refreshComponents() {
 function paintCompNav() {
   const s = comp.status;
   const list = s && s.ok && Array.isArray(s.components) ? s.components : [];
-  const due = list.filter((c) => c.downloadable && (c.status === 'outdated' || c.status === 'missing'));
+  const due = list.filter((c) => compRelevant(c) && c.downloadable && !c.optional && (c.status === 'outdated' || c.status === 'missing'));
   for (const item of document.querySelectorAll('[data-view="components"]')) {
     item.classList.toggle('has-update', due.length > 0);
     let badge = item.querySelector('.nav-badge');
@@ -1401,9 +1504,19 @@ function wireComponents() {
     const b = e.target.closest('[data-comp-act]');
     if (!b || comp.busy) return;
     if (b.dataset.compAct === 'import') compImport();
+    else if (b.dataset.compAct.startsWith('legacy-')) compLegacyNr(b.dataset.compAct.slice(7));
     else compDownload(b.dataset.compId);
   });
   $('compAll').onclick = () => compDownload('all');
+  for (const b of document.querySelectorAll('[data-comp-gpu]')) {
+    b.onclick = () => {
+      if (comp.busy || b.dataset.compGpu === compGpuNow()) return;
+      setCompGpu(b.dataset.compGpu);
+      paintComponents();
+      paintCompBanner();
+      paintCompNav();
+    };
+  }
   $('compImport').onclick = () => compImport();
   $('compRecheck').onclick = () => renderComponents(true);
   $('compMigrate').onclick = () => compMigrate();
@@ -1416,7 +1529,7 @@ function wireComponents() {
   renderCustomAddons();
 }
 
-// Own add-on builds (a purchased lecram build, a ShortFuse Patreon build):
+// Own add-on builds (a purchased lecram build, a newer ShortFuse build):
 // imported once, then used by every install and by "Update installed DLSS 5".
 async function renderCustomAddons() {
   const box = $('caList');
@@ -1427,7 +1540,7 @@ async function renderCustomAddons() {
   box.innerHTML = present.length ? present.map((r) => `
     <div class="own-row${r.active ? ' on' : ''}">
       <div class="own-info"><b>${esc(r.label)}</b>
-        <span>${esc(r.name)}${r.version ? ' · v' + esc(r.version) : ''} · SHA-256 ${esc(String(r.sha256).slice(0, 12))}…</span>
+        <span>${esc(r.file || r.name)}${r.version ? ' · v' + esc(r.version) : ''} · SHA-256 ${esc(String(r.sha256).slice(0, 12))}…</span>
         <span class="own-state">${esc(t(r.active ? 'caActive' : 'caInactive'))}</span></div>
       <div class="own-acts">
         <button class="${r.active ? 'ghost' : 'glass-btn'} sm" data-ca-act="${r.active ? 'off' : 'on'}" data-ca-name="${esc(r.name)}">${esc(t(r.active ? 'caUseBuiltin' : 'caUseOwn'))}</button>
@@ -1440,7 +1553,9 @@ async function customAddonImport() {
   const answer = await window.lab.customAddonImport({ title: t('caImport') });
   if (!answer || answer.cancelled) return;
   if (!answer.ok) { log(t('caFailed', answer.code ? t(answer.code, answer.params || {}) : answer.message)); return; }
-  log(t('caImported', answer.name, answer.version || '?', answer.scanned));
+  log(answer.file === 'dlss5-nr.addon64'
+    ? t('caImportedV11', answer.version || '?', answer.scanned)
+    : t('caImported', answer.name, answer.version || '?', answer.scanned));
   await renderCustomAddons();
   refreshUpdateAll();
 }
@@ -1499,6 +1614,28 @@ function compImport() {
     if (r && r.cancelled) return;
     if (r && r.ok) log(t('compLogImported', { version: r.version, models: t(r.models === 'AB' ? 'compModelsAB' : 'compModelsA') }));
     else { comp.errors.dlssnr = compMsg(r); log(t('compLogFailed', { name: compName({ id: 'dlssnr', name: 'nvngx_dlssnr.dll' }), reason: compMsg(r) })); }
+  });
+}
+
+// The community DLSS 5 build for RTX 20/30/40: opt-in, behind a warning.
+async function compLegacyNr(act) {
+  const id = 'dlssnr-legacy';
+  const name = compName({ id, name: id });
+  if (act === 'download') {
+    const s = comp.status || {};
+    const body = t('compLegacyNrWarnBody', { gpu: s.gpu ? s.gpu.names : '?' }) + (s.gpu && s.gpu.blackwell ? '\n\n' + t('compLegacyNrWarnRtx50') : '');
+    if (!await ask({ icon: 'shield', title: t('compLegacyNrWarnTitle'), body, confirm: t('compLegacyNrWarnConfirm'), cancel: t('cancel') })) return;
+    return compBusy(async () => {
+      const r = await window.lab.componentsDownload(id, { acceptUnsigned: true });
+      if (r && r.ok) log(t('compLogDone', { name, version: r.version }) + ' ' + t(r.active ? 'compLegacyNrOn' : 'compLegacyNrOff'));
+      else { comp.errors[id] = compMsg(r); log(t('compLogFailed', { name, reason: compMsg(r) })); }
+    });
+  }
+  if (act === 'remove' && !await ask({ icon: 'question', title: name, body: t('compLegacyNrRemoveBody'), confirm: t('caRemove'), cancel: t('cancel') })) return;
+  return compBusy(async () => {
+    const r = await window.lab.componentsLegacyNr(act);
+    if (r && r.ok) log(t(act === 'remove' ? 'compLegacyNrRemoved' : (r.active ? 'compLegacyNrOn' : 'compLegacyNrOff')) + (act === 'remove' ? '' : ' ' + t('compLegacyNrReinstall')));
+    else { comp.errors[id] = compMsg(r); log(t('compLogFailed', { name, reason: compMsg(r) })); }
   });
 }
 
@@ -1621,6 +1758,23 @@ async function runJob(kind, dir) {
     // the manifest so Restore originals becomes available immediately.
     setTimeout(() => { if (sheetGame?.dir === dir) openSheet(dir, true); }, 250);
   }
+}
+
+// The sheet could not be built. Say why instead of leaving "Reading the
+// folder…" on screen forever, and put the reason in the log to copy.
+function sheetFailed(g, err) {
+  const reason = String((err && err.message) || err || '?').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '');
+  $('sheet').innerHTML = `<div class="pad">
+    <h3 style="margin:0 0 8px">${esc(g.name)}</h3>
+    <p class="hint">${esc(t('sheetFailed'))}</p>
+    <pre style="white-space:pre-wrap;font-size:12px;opacity:.85">${esc(reason)}</pre>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="ghost sm" id="sheetRetry">${esc(t('sheetRetry'))}</button>
+      <button class="glass-btn sm" id="sheetClose">${esc(t('sheetCloseBtn'))}</button>
+    </div></div>`;
+  $('sheetClose').onclick = closeSheet;
+  $('sheetRetry').onclick = () => openSheet(g.dir);
+  log(t('sheetFailedLog', { name: g.name, reason }));
 }
 
 function closeSheet() {
@@ -2067,7 +2221,7 @@ document.addEventListener('keydown', (e) => {
 // DirectX 11 games that ignore dxgi.dll (#328), and the wrapped DirectX 8/9
 // ones that become DirectX 11 inside dgVoodoo (#343).
 const RESHADE_PROXY_APIS = ['dxgi', 'd3d8', 'd3d9', 'ddraw'];
-const SPOKEN_JOB_CODES = new Set(['historySaveWarning', 'driverNeuralFault', 'oldShaderCompiler', 'overlaySkipped', 'feedVkLayerReady', 'neuralModelKept', 'rivalConsumerSetAside', 'overlayNotForRoute', 'multipassNext', 'forwarderRetired', 'optiDownloading', 'optiVerified', 'restoreRecovered']);
+const SPOKEN_JOB_CODES = new Set(['historySaveWarning', 'driverNeuralFault', 'oldShaderCompiler', 'overlaySkipped', 'feedVkLayerReady', 'neuralModelKept', 'rivalConsumerSetAside', 'overlayNotForRoute', 'multipassNext', 'forwarderRetired', 'optiDownloading', 'optiVerified', 'restoreRecovered', 'legacyNrUsed', 'nrOldCard', 'portUsed', 'portModelReplaced']);
 window.lab.onJob((e) => jobLog(SPOKEN_JOB_CODES.has(e.code)
   ? t(e.code, ...Object.values(e.params || {}))
   : `${e.code} ${JSON.stringify(e.params)}`));
@@ -2100,6 +2254,17 @@ document.addEventListener('drop', (e) => e.preventDefault());
   if (boot.payloadMissing) log(typeof boot.payloadMissing === 'string' ? boot.payloadMissing : t('errPayloadMissing', boot.payloadMissing.params || {}));
   // Components tab: banner on the home view when files are missing.
   try { wireComponents(); refreshComponents(); } catch { /* the tab still works on its own */ }
+  // AMD Radeon / Intel Arc: the route policy switches to the vendor-neutral
+  // DLSS 5 port before any game sheet is drawn.
+  try {
+    state.gpuMode = await window.lab.gpuMode();
+    if (state.gpuMode && state.gpuMode.vendorNeutral) {
+      window.installRoutes.setVendorNeutral(true);
+      log(t(state.gpuMode.mode === 'intel' ? 'gpuModeIntel' : 'gpuModeAmd', state.gpuMode.names || '?'));
+    }
+  } catch { /* NVIDIA policy stays */ }
+  // The Components list defaults to the detected card, known only now.
+  try { paintCompBanner(); paintCompNav(); if (document.getElementById('view-components')?.classList.contains('active')) paintComponents(); } catch { /* repainted on the next visit */ }
   showUpdateNotice();
   state.logo = boot;
   paintBrand();

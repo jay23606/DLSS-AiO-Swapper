@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld('lab', {
   componentsDownload: (id, options) => ipcRenderer.invoke('components-download', id, options),
   componentsImportNr: (request) => ipcRenderer.invoke('components-import-nr', request),
   componentsMigrate: () => ipcRenderer.invoke('components-migrate'),
+  componentsLegacyNr: (action) => ipcRenderer.invoke('components-legacy-nr', action),
+  gpuMode: () => ipcRenderer.invoke('gpu-mode'),
   dlssVersions: () => ipcRenderer.invoke('dlss-versions'),
   onComponentsProgress: (handler) => ipcRenderer.on('components-progress', (_e, event) => handler(event)),
   acknowledgeDriver: (names) => ipcRenderer.invoke('acknowledge-driver', names),

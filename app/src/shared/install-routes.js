@@ -9,13 +9,22 @@
     const rel = file.rel.replace(/\\/g, '/').toLowerCase();
     return !((scan.install && scan.install.added) || []).some(item => item.replace(/\\/g, '/').toLowerCase() === rel);
   }
+  // AMD Radeon / Intel Arc: only the vendor-neutral DLSS 5 port can run, and
+  // it rides on OptiScaler. Every ReShade route needs NVIDIA's NGX runtime.
+  // The port works on the game's DLSS, FSR or XeSS, so a game need not ship
+  // NVIDIA's DLSS file. Set once per process from the detected GPU.
+  let vendorNeutral = false;
+  function setVendorNeutral(value) { vendorNeutral = Boolean(value); }
+  function isVendorNeutral() { return vendorNeutral; }
   function optiReason(target, api = target && target.api) {
     if (!target || target.bitness !== 64 || target.emulator) return 'optiUnsupported';
     if (!['dxgi', 'vulkan'].includes(api) || target.apiLabel === 'DirectX 10') return 'optiUnsupported';
+    if (vendorNeutral) return null;
     if (!target.hasNativeDlss) return 'optiNeedsDlss';
     return null;
   }
   function routesFor(target, api = target && target.api) {
+    if (vendorNeutral) return !optiReason(target, api) ? ['optiscaler'] : [];
     if (!target || ![32, 64].includes(target.bitness)) return [];
     if (api === 'd3d10' || (api === 'dxgi' && target.apiLabel === 'DirectX 10')) return [];
     // DirectDraw and DX8 both reach modern hardware only through dgVoodoo's
@@ -50,12 +59,13 @@
   }
   function recommendedRoute(scan, target = scan.chosen) {
     const routes = routesFor(target);
+    if (vendorNeutral) return routes[0] || null;
     const nativeDlss = nativeDlssPresent(scan);
     const wanted = scan.install && scan.install.route === 'feeder'
       ? 'feeder' : nativeDlss ? 'native' : 'feeder';
     return routes.includes(wanted) ? wanted : (routes[0] || null);
   }
-  const api = { routesFor, recommendedRoute, nativeDlssPresent, optiReason };
+  const api = { routesFor, recommendedRoute, nativeDlssPresent, optiReason, setVendorNeutral, isVendorNeutral };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.installRoutes = api;
 })(typeof window !== 'undefined' ? window : globalThis);
