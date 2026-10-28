@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('lab', {
   customAddons: () => ipcRenderer.invoke('custom-addons'),
   gameExtras: (dir) => ipcRenderer.invoke('game-extras', dir),
   hdrInstall: (dir, artifact) => ipcRenderer.invoke('hdr-install', dir, artifact),
+  openNexus: (url) => ipcRenderer.invoke('open-nexus', url),
   gameAddonAdd: (dir, title) => ipcRenderer.invoke('game-addon-add', dir, title),
   gameAddonRemove: (dir, name) => ipcRenderer.invoke('game-addon-remove', dir, name),
   customAddonImport: (arg) => ipcRenderer.invoke('custom-addon-import', arg),
