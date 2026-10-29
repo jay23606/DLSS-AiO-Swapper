@@ -23,8 +23,29 @@
     if (!target.hasNativeDlss) return 'optiNeedsDlss';
     return null;
   }
+  // lecram v12.6+ imported with its host: one add-on that finds the game's
+  // depth and motion itself (no Feeder), and runs D3D9, D3D10, OpenGL and
+  // 32-bit games through its 64-bit host. Set from the imported files.
+  let lecram12 = null;
+  function setLecram12(value) { lecram12 = value ? { has32: Boolean(value.has32) } : null; }
+  function lecram12Ok(target, api) {
+    if (!lecram12 || !target || target.emulator) return false;
+    const bits = target.bitness;
+    if (bits === 32 && !lecram12.has32) return false;
+    if (api === 'd3d9' || api === 'opengl' || api === 'd3d10') return bits === 32 || bits === 64;
+    if (api === 'dxgi') return target.apiLabel === 'DirectX 12' ? bits === 64 : (bits === 32 || bits === 64);
+    if (api === 'vulkan') return bits === 64;
+    return false;
+  }
   function routesFor(target, api = target && target.api) {
     if (vendorNeutral) return !optiReason(target, api) ? ['optiscaler'] : [];
+    const routes = baseRoutes(target, api);
+    if (!lecram12Ok(target, api)) return routes;
+    const at = routes.indexOf('native');
+    routes.splice(at === -1 ? 0 : at + 1, 0, 'lecram12');
+    return routes;
+  }
+  function baseRoutes(target, api) {
     if (!target || ![32, 64].includes(target.bitness)) return [];
     if (api === 'd3d10' || (api === 'dxgi' && target.apiLabel === 'DirectX 10')) return [];
     // DirectDraw and DX8 both reach modern hardware only through dgVoodoo's
@@ -61,11 +82,12 @@
     const routes = routesFor(target);
     if (vendorNeutral) return routes[0] || null;
     const nativeDlss = nativeDlssPresent(scan);
-    const wanted = scan.install && scan.install.route === 'feeder'
-      ? 'feeder' : nativeDlss ? 'native' : 'feeder';
+    const installed = scan.install && scan.install.route;
+    const wanted = installed === 'feeder' || installed === 'lecram12'
+      ? installed : nativeDlss ? 'native' : routes.includes('lecram12') ? 'lecram12' : 'feeder';
     return routes.includes(wanted) ? wanted : (routes[0] || null);
   }
-  const api = { routesFor, recommendedRoute, nativeDlssPresent, optiReason, setVendorNeutral, isVendorNeutral };
+  const api = { routesFor, recommendedRoute, nativeDlssPresent, optiReason, setVendorNeutral, isVendorNeutral, setLecram12 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.installRoutes = api;
 })(typeof window !== 'undefined' ? window : globalThis);

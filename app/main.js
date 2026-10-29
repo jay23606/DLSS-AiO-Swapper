@@ -285,6 +285,9 @@ function payload(raw) {
           probe.addon = own['renodx-dlss5.addon64'];
           if (probe.feeder) probe.feeder = { ...probe.feeder, hostAddon: own['renodx-dlss5.addon64'] };
         }
+        // v12.6+ imported with its host: the "no Feeder" route opens up.
+        probe.lecram12 = customAddons.lecramHost(own['renodx-dlss5.addon64']);
+        installRoutes.setLecram12(probe.lecram12 ? { has32: Boolean(probe.lecram12.addon32) } : null);
         if (own['renodx-dlss.addon64']) probe.multipassAddon = own['renodx-dlss.addon64'];
       }
       return { source: probe, reshadeSetup: setup ? path.join(dir, setup) : null };
@@ -1308,6 +1311,11 @@ ipcMain.handle('game-extras', async (_event, dir) => {
   } catch (error) { catalogError = error.code || 'hdrErrOffline'; }
   return { ok: true, mods, addons, catalogError, bits: g.bits, api: g.api };
 });
+// Nexus-only HDR mods: open their Nexus page, and nothing else.
+ipcMain.handle('open-nexus', async (_event, url) => {
+  if (typeof url !== 'string' || !/^https:\/\/www\.nexusmods\.com\/[\w/-]+$/.test(url)) return false;
+  try { await shell.openExternal(url); return true; } catch { return false; }
+});
 ipcMain.handle('hdr-install', (_event, dir, artifact) => exclusiveMutation(async () => {
   const g = reshadeGame(dir);
   if (!g.ok) return { ok: false, code: g.reason };
@@ -1583,7 +1591,9 @@ ipcMain.handle('details', async (_event, dir) => {
     addon: scan.addonPresent,
     reshade: scan.reshade,
     hasBackup: scan.hasBackup || fs.existsSync(journal.pendingPath(dir)),
-    newDlss: detailsPayload && detailsPayload.source ? detailsPayload.source.dlssVersion : null
+    newDlss: detailsPayload && detailsPayload.source ? detailsPayload.source.dlssVersion : null,
+    lecram12: detailsPayload && detailsPayload.source && detailsPayload.source.lecram12
+      ? { has32: Boolean(detailsPayload.source.lecram12.addon32) } : null
   };
 });
 
@@ -1683,7 +1693,7 @@ ipcMain.handle('install', (event, dir, exePath, requestedRoute, requestedApi) =>
   // The ReShade and Feeder routes both drive the RenoDX neural consumer, which
   // upstream has measured faulting inside NVIDIA's runtime on a known driver
   // range. Say so before the work starts; it never stops the install.
-  if (route === 'native' || route === 'feeder' || route === 'combo') {
+  if (route === 'native' || route === 'feeder' || route === 'combo' || route === 'lecram12') {
     // Advice only: nothing about reading the driver may decide whether an
     // install runs.
     try {
@@ -1866,6 +1876,10 @@ function updatableSources() {
   const byName = new Map();
   if (s.addon && fs.existsSync(s.addon)) byName.set(path.basename(s.addon).toLowerCase(), s.addon);
   if (s.multipassAddon && fs.existsSync(s.multipassAddon)) byName.set('renodx-dlss.addon64', s.multipassAddon);
+  if (s.lecram12) {
+    if (s.lecram12.addon32) byName.set('dlss5-nr.addon32', s.lecram12.addon32);
+    byName.set('nr-host64.exe', s.lecram12.hostExe);
+  }
   const nr = (s.payload || []).find((f) => f.name.toLowerCase() === 'nvngx_dlssnr.dll');
   if (nr && fs.existsSync(nr.path)) byName.set('nvngx_dlssnr.dll', nr.path);
   return byName;

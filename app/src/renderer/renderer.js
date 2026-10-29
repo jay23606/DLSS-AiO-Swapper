@@ -862,7 +862,7 @@ function installOptions(d, pick, dir) {
         <option value="optiscaler"${opti ? ' selected' : ''}${optiReason ? ' disabled' : ''}>${neutral ? esc(t('routePort')) : 'OptiScaler DLSS-NR (no ReShade)'}</option>
       </select></label>
       ${!opti ? `<label><span>${t('fRoute')}</span><select id="routeChoice">${routes.filter(item => item !== 'optiscaler').map((item) =>
-        `<option value="${item}"${item === route ? ' selected' : ''}>${t(item === 'feeder' ? 'routeFeeder' : item === 'renodx' ? 'routeRenodx' : item === 'combo' ? 'routeCombo' : 'routeNative')}</option>`).join('')}</select></label>
+        `<option value="${item}"${item === route ? ' selected' : ''}>${t(item === 'feeder' ? 'routeFeeder' : item === 'renodx' ? 'routeRenodx' : item === 'combo' ? 'routeCombo' : item === 'lecram12' ? 'routeLecram12' : 'routeNative')}</option>`).join('')}</select></label>
       ` : ''}
       ${!opti && RESHADE_PROXY_APIS.includes(api.api) && api.label !== 'DirectX 12' ? `<label><span>${t('fReshadeFile')}</span><select id="reshadeProxy">
         <option value="dxgi"${pick.reshadeProxy !== 'd3d11' ? ' selected' : ''}>dxgi.dll</option>
@@ -877,6 +877,7 @@ function installOptions(d, pick, dir) {
         ${route === 'native' ? `<span>${t('nativeEffectsHint')}</span>` : ''}
         ${route === 'renodx' ? `<span>${t('routeRenodxHint')}</span>` : ''}
         ${route === 'combo' ? `<span>${t('routeComboHint')}</span>` : ''}
+        ${route === 'lecram12' ? `<span>${t('routeLecram12Hint')}</span>` : ''}
         ${!opti && RESHADE_PROXY_APIS.includes(api.api) && pick.reshadeProxy === 'd3d11' ? `<span>${t(api.api === 'dxgi' ? 'reshadeProxyHint' : 'reshadeProxyWrapHint')}</span>` : ''}
         ${opti && (api.api === 'vulkan' || api.label === 'DirectX 11') ? `<span>${t('optiBridgeHint')}</span>` : ''}
         ${opti && api.api === 'vulkan' ? `<span>${t('optiVulkanHint')}</span>` : ''}
@@ -965,6 +966,7 @@ async function openSheet(dir, keepLog = false) {
   if (sheetGame !== g) return;
   if (!d || !Array.isArray(d.exes)) { sheetFailed(g, new Error((d && (d.message || d.reason)) || 'no folder details')); return; }
   sheetDetails = d;
+  window.installRoutes.setLecram12(d.lecram12 || null);
   if (!exeChoice.has(dir) && d.installedExe) {
     const installed = d.exes.find((item) => item.rel.toLowerCase() === String(d.installedExe).toLowerCase());
     if (installed) exeChoice.set(dir, installed.path);
@@ -1553,7 +1555,9 @@ async function customAddonImport() {
   const answer = await window.lab.customAddonImport({ title: t('caImport') });
   if (!answer || answer.cancelled) return;
   if (!answer.ok) { log(t('caFailed', answer.code ? t(answer.code, answer.params || {}) : answer.message)); return; }
-  log(answer.file === 'dlss5-nr.addon64'
+  log(answer.file === 'dlss5-nr.addon64' && answer.host
+    ? t('caImportedV126', answer.version || '?', answer.scanned, answer.addon32)
+    : answer.file === 'dlss5-nr.addon64'
     ? t('caImportedV11', answer.version || '?', answer.scanned)
     : t('caImported', answer.name, answer.version || '?', answer.scanned));
   await renderCustomAddons();
@@ -1940,10 +1944,12 @@ async function renderExtras(dir) {
           <span>${esc(t('hdrBy', (m.maintainers || []).join(', ') || '?'))}${m.status ? ' · ' + esc(m.status) : ''}${m.installed ? ' · ' + esc(t('hdrInstalled')) : ''}</span>
           ${(m.notes || []).map((n) => `<span class="extra-note">${esc(n)}</span>`).join('')}
           ${m.apiMismatch ? `<span class="extra-warn">${esc(t('hdrApiMismatch', m.api))}</span>` : ''}
-          ${!m.artifact ? `<span class="extra-warn">${esc(t('hdrNoArch', info.bits))}</span>` : ''}</div>
+          ${m.nexusOnly ? `<span class="extra-note">${esc(t('hdrNexusOnly'))}</span>`
+            : !m.artifact ? `<span class="extra-warn">${esc(t('hdrNoArch', info.bits))}</span>` : ''}</div>
         <div class="extra-acts">${m.installed
           ? (m.ours ? `<button class="ghost sm" data-x-act="remove" data-x-name="${esc(m.artifact)}">${esc(t('hdrRemove'))}</button>` : `<span class="dim">${esc(t('hdrYours'))}</span>`)
-          : m.artifact ? `<button class="glass-btn sm" data-x-act="hdr" data-x-name="${esc(m.artifact)}">${esc(t('hdrInstall'))}</button>` : ''}</div>
+          : m.artifact ? `<button class="glass-btn sm" data-x-act="hdr" data-x-name="${esc(m.artifact)}">${esc(t('hdrInstall'))}</button>`
+          : m.nexusOnly && m.nexus ? `<button class="ghost sm" data-x-act="nexus" data-x-name="${esc(m.nexus)}">${esc(t('hdrOpenNexus'))}</button>` : ''}</div>
       </div>`).join('');
   const hdrNames = new Set(mods.map((m) => String(m.artifact || '').toLowerCase()));
   const others = (info.addons || []).filter((a) => !hdrNames.has(a.name.toLowerCase()));
@@ -1964,6 +1970,7 @@ async function renderExtras(dir) {
   };
 }
 async function extrasAction(dir, act, name) {
+  if (act === 'nexus') { window.lab.openNexus(name); return; }
   if (jobRunning) return;
   const box = $('sheetExtras');
   box?.querySelectorAll('button').forEach((b) => { b.disabled = true; });
@@ -2221,7 +2228,7 @@ document.addEventListener('keydown', (e) => {
 // DirectX 11 games that ignore dxgi.dll (#328), and the wrapped DirectX 8/9
 // ones that become DirectX 11 inside dgVoodoo (#343).
 const RESHADE_PROXY_APIS = ['dxgi', 'd3d8', 'd3d9', 'ddraw'];
-const SPOKEN_JOB_CODES = new Set(['historySaveWarning', 'driverNeuralFault', 'oldShaderCompiler', 'overlaySkipped', 'feedVkLayerReady', 'neuralModelKept', 'rivalConsumerSetAside', 'overlayNotForRoute', 'multipassNext', 'forwarderRetired', 'optiDownloading', 'optiVerified', 'restoreRecovered', 'legacyNrUsed', 'nrOldCard', 'portUsed', 'portModelReplaced']);
+const SPOKEN_JOB_CODES = new Set(['historySaveWarning', 'driverNeuralFault', 'oldShaderCompiler', 'overlaySkipped', 'feedVkLayerReady', 'neuralModelKept', 'rivalConsumerSetAside', 'overlayNotForRoute', 'multipassNext', 'forwarderRetired', 'optiDownloading', 'optiVerified', 'restoreRecovered', 'legacyNrUsed', 'nrOldCard', 'portUsed', 'portModelReplaced', 'feederLeftover', 'extraAddonKept']);
 window.lab.onJob((e) => jobLog(SPOKEN_JOB_CODES.has(e.code)
   ? t(e.code, ...Object.values(e.params || {}))
   : `${e.code} ${JSON.stringify(e.params)}`));

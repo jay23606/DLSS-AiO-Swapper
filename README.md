@@ -160,6 +160,8 @@ Newer lecram builds (10.x / v11 / v12) are sold by their author on Buy Me a Coff
 
 **lecram v11 / v12** is called `dlss5-nr.addon64` – import the *Add-on only* download (not lecram's own installer). It keeps that file name in the game; the old `renodx-dlss5.addon64` is moved into the backup automatically. Because the name is new, click **Install DLSS 5** once per game (after that, *Update installed DLSS 5* keeps them current). It is used by the ReShade route **and the Feeder route** (games without DLSS), and **Restore** also removes the runtime copy (`dlss5-nr-runtime\`, ~500 MB) that v11/v12 creates next to the game.
 
+**lecram v12.6+ – no Feeder:** import the whole *DLSS5 NR Add-on v12.6.x* zip (the hand-install one). The app keeps the 64-bit add-on, the 32-bit add-on and lecram's 64-bit host (`dlss5-nr-host\nr-host64.exe`). Game pages then offer the route **Lecram v12.6 – no Feeder**: v12.6 finds the game's depth and motion itself, and runs **DirectX 9, DirectX 10, OpenGL and 32-bit games** through its host. The app installs ReShade under the name the game's API loads (`d3d9.dll`, `dxgi.dll`, `opengl32.dll`), the add-on, NVIDIA's runtime and – for every game that is not DX12/Vulkan – the host folder with the app's own ReShade 6.8. It is recommended for games without DLSS once imported; the Feeder route stays available. Restore removes everything, including the host's logs and the runtime copy.
+
 ## Feature requests and bugs
 
 - 💡 **Suggest a feature** / 🐞 **Report a bug** – bottom of the sidebar or on *About*. Opens GitHub's form in your browser with the app version filled in; the app itself sends nothing.

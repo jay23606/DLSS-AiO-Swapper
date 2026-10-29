@@ -17,8 +17,17 @@ const TTL = 60 * 60 * 1000;
 let memo = null;
 
 const fail = (code, message, params = {}) => Object.assign(new Error(message), { code, params });
+// Folder and store names drift from RenoDX's titles: "Kingdom Come- Deliverance
+// II" (Xbox folder) vs "Kingdom Come Deliverance 2", "AC Black Flag Resynced"
+// vs "Assassin's Creed Black Flag Resynced". Roman numerals become digits and
+// the common AC abbreviation is spelled out - on both sides, so a title only
+// ever matches the same title.
+const ROMAN = { ii: '2', iii: '3', iv: '4', v: '5', vi: '6', vii: '7', viii: '8', ix: '9', x: '10' };
 const norm = (s) => String(s || '').toLowerCase()
-  .replace(/[™®©]/g, '').replace(/\b(the|game of the year|goty|edition|remastered|definitive|complete|enhanced)\b/g, '')
+  .replace(/[™®©]/g, '').replace(/[’']/g, '')
+  .replace(/^ac\b/, 'assassins creed')
+  .replace(/\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/g, (r) => ROMAN[r])
+  .replace(/\b(the|game of the year|goty|edition|remastered|definitive|complete|enhanced)\b/g, '')
   .replace(/[^a-z0-9]/g, '');
 
 async function fetchJson(url) {
@@ -59,17 +68,20 @@ async function catalog(cacheDir) {
 function modsFor(data, { appid, name }) {
   const want = norm(name);
   const games = data.games.filter((g) => (appid && String(g.steam_appid || g.deploy?.steam_appid || '') === String(appid)) ||
-    (want && [g.title, ...(g.aliases || [])].some((t) => norm(t) === want)));
+    (want && [g.title, g.id, ...(g.aliases || [])].some((t) => norm(t) === want)));
   const out = [];
   for (const g of games) {
     for (const m of g.mods || []) {
       if (m.category !== 'game') continue;
       const artifacts = (m.artifacts || []).filter((a) => /\.addon(32|64)$/i.test(a.name) && data.assets[a.name] && data.assets[a.name].digest)
         .map((a) => ({ name: a.name, arch: /\.addon64$/i.test(a.name) ? 64 : 32, size: data.assets[a.name].size }));
-      if (!artifacts.length) continue;
+      // Some mods are published only on Nexus Mods (Resident Evil Requiem).
+      // Shown with a link instead of being hidden; nothing is downloaded.
+      const nexusUrl = (m.urls || []).find((u) => /^nexus(_mods)?$/.test(u.kind) && /^https:\/\/www\.nexusmods\.com\//.test(u.url))?.url || null;
+      if (!artifacts.length && !nexusUrl) continue;
       out.push({ id: m.id, title: m.title || g.title, variant: m.variant || null, status: m.status || null,
         maintainers: m.maintainers || [], notes: m.notes || [], api: m.deploy?.api || null,
-        nexus: (m.urls || []).find((u) => u.kind === 'nexus_mods')?.url || null, artifacts });
+        nexus: nexusUrl, nexusOnly: !artifacts.length, artifacts });
     }
   }
   return out;

@@ -9,6 +9,19 @@ const ini = require('./feeder-config');
 const optiscaler = require('./optiscaler');
 const compatibility = require('./compatibility');
 
+// Add-ons the person added on the game page (RenoDX HDR mods, own extras)
+// are not part of any route. A route switch restores the old route's files
+// first, which took them away with it - an HDR mod vanished when Witcher went
+// from one Lecram route to another. They are carried over instead.
+const ROUTE_ADDON = /^(renodx-dlss.*|dlss5-nr|dlss5-feed.*|machiavelli-dlss5nr|deep-fried-chicken|alexs-toolkit)\.addon(32|64)?$/i;
+function extraAddons(gameDir, manifest) {
+  return (manifest.added || []).filter((rel) => typeof rel === 'string')
+    .filter((rel) => /\.addon(32|64)?$/i.test(rel) && !ROUTE_ADDON.test(path.basename(rel)))
+    .filter((rel) => !/(^|[\\/])(dlss5-nr-host|host64)[\\/]/i.test(rel))
+    .map((rel) => ({ rel, file: path.join(gameDir, rel) }))
+    .filter((item) => fs.existsSync(item.file));
+}
+
 function readManifest(gameDir) {
   const file = path.join(core.backupRoot(gameDir), 'manifest.json');
   if (!fs.existsSync(file)) return null;
@@ -21,7 +34,7 @@ function profileFile(gameDir, exePath, api, route) {
   // The profile file is named after the route, so this list is what decides
   // whether a route can keep its own settings at all - and a route missing
   // from it fails the install with nothing but "Invalid route".
-  if (!['native', 'feeder', 'optiscaler', 'renodx', 'combo'].includes(route)) throw new Error('Invalid route');
+  if (!['native', 'feeder', 'optiscaler', 'renodx', 'combo', 'lecram12'].includes(route)) throw new Error('Invalid route');
   const id = crypto.createHash('sha256').update(`${path.relative(gameDir, exePath).toLowerCase()}|${api}`).digest('hex').slice(0, 24);
   return journal.safePath(gameDir, `_DLSS5_Backup/.profiles/${id}-${route}.json`);
 }
@@ -101,7 +114,7 @@ async function install(config, log = () => {}) {
   // ReShade's global Vulkan registration is not a game-local transaction.
   // Keep its existing recoverable partial manifest on failure instead of
   // rolling that manifest away while leaving a shared layer registered.
-  if (config.api === 'vulkan' && config.route === 'feeder') {
+  if (config.api === 'vulkan' && (config.route === 'feeder' || config.route === 'lecram12')) {
     compatibility.assertLoaderCompatible(config, old);
     const profile = !old ? loadProfile(config) : {};
     if (Object.keys(profile).length) {
@@ -122,10 +135,20 @@ async function install(config, log = () => {}) {
       }
       await core.saveActiveManifest(config.gameDir, initial);
     }
+    let carried = [];
     if (changed) {
       log({ code: 'backendSwitching', params: { from: old.route, to: config.route } });
+      if (config.route !== 'optiscaler') {
+        const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'aio-extra-'));
+        carried = extraAddons(config.gameDir, old).map((item) => {
+          const copy = path.join(tmp, path.basename(item.rel));
+          fs.copyFileSync(item.file, copy);
+          return { ...item, copy, tmp };
+        });
+      }
       await saveProfile(config.gameDir, old);
       await core.restoreFiles(config.gameDir, old, log);
+      await core.removeNrLeftovers(config.gameDir, old, (code, params) => log({ code, params: params || {} }));
     }
     if (config.route !== 'optiscaler') compatibility.assertLoaderCompatible(config, changed ? null : old);
     const profile = changed || !old ? loadProfile(config) : {};
@@ -138,6 +161,16 @@ async function install(config, log = () => {}) {
     let manifest;
     if (config.route === 'optiscaler') manifest = await optiscaler.install({ ...config, profile }, log);
     else manifest = await core.applySwap(config, log);
+    for (const item of carried) {
+      const exeDir = path.dirname(config.exePath);
+      const dest = path.join(exeDir, path.basename(item.rel));
+      if (!fs.existsSync(dest)) {
+        await core.copyTracked(manifest, config.gameDir, item.copy, dest, { kind: 'extra-addon' });
+        await core.enableAddonInIni(exeDir, path.basename(item.rel), (code, params) => log({ code, params }), config.gameDir, manifest);
+        log({ code: 'extraAddonKept', params: { name: path.basename(item.rel) } });
+      }
+    }
+    for (const tmp of new Set(carried.map((item) => item.tmp))) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }
     for (const companion of config.route === 'native' ? (config.companions || []) : []) {
       const dest = path.join(path.dirname(config.exePath), path.basename(companion));
       await core.copyTracked(manifest, config.gameDir, companion, dest, { kind: 'addon' });

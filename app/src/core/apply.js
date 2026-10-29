@@ -678,7 +678,7 @@ async function enableAddonInIni(exeDir, addonName, log, gameDir, manifest) {
 // so Restore puts the person's own build back - and one this app left there
 // itself is simply removed.
 // lecram v11 is called dlss5-nr.addon64 and is the same kind of consumer.
-const RENODX_CONSUMER = /^(?:renodx-dlss.*|dlss5-nr)\.addon64$/i;
+const RENODX_CONSUMER = /^(?:renodx-dlss.*|dlss5-nr)\.addon(?:64|32)$/i;
 async function setAsideRivalConsumers(manifest, gameDir, dir, keep, log) {
   let names = [];
   try { names = fs.readdirSync(dir); } catch { return; }
@@ -720,8 +720,93 @@ async function retireOldShaderCompiler(manifest, gameDir, exeDir, log, readVersi
   return true;
 }
 
+// lecram v12.6+ without the Feeder: ReShade of the game's bitness under the
+// name its API loads, ONE add-on (dlss5-nr.addon64 or .addon32), NVIDIA's NR
+// runtime beside the exe, and - for every game that is not D3D12 or Vulkan -
+// the add-on's 64-bit host in dlss5-nr-host\ (D3D9, D3D10, OpenGL, 32-bit and
+// D3D11 with in-game MSAA run NR there; the author's setup puts it beside
+// every 64-bit D3D11 game too). The host's ReShade is the app's own, checked
+// ReShade 6.8 add-on build, not a copy from the zip.
+async function applyLecram12(config, log) {
+  const { gameDir, exePath, api, source, reshadeSetup, setupRunner, vulkanLayerTarget, registryRunner, reshadeProxy } = config;
+  const bitness = config.bitness || pe.getBitness(exePath);
+  const exeDir = path.dirname(exePath);
+  const nr = source.lecram12;
+  if (!canWrite(exeDir)) throw fail('errNoWriteAccess');
+  if (!source.hasNeuralRendering) throw fail('errNoNeuralRuntime');
+  if (!nr || !fs.existsSync(nr.addon64) || !fs.existsSync(nr.hostExe)) throw fail('errLecram12Missing');
+  if (bitness === 32 && !(nr.addon32 && fs.existsSync(nr.addon32))) throw fail('errLecram12Missing');
+  if (!['dxgi', 'd3d9', 'd3d10', 'opengl', 'vulkan'].includes(api) || (api === 'vulkan' && bitness !== 64)) {
+    throw fail('errFeederApiUnsupported', { api, bitness });
+  }
+  const dx12 = api === 'dxgi' && config.apiLabel === 'DirectX 12';
+  if (dx12 && bitness !== 64) throw fail('errFeederApiUnsupported', { api, bitness });
+
+  const manifest = beginManifest(gameDir, exePath, api);
+  manifest.route = 'lecram12';
+  manifest.game.bitness = bitness;
+  manifest.game.apiLabel = config.apiLabel;
+  await retireOldShaderCompiler(manifest, gameDir, exeDir, log);
+
+  const neural = source.payload.find((file) => file.name.toLowerCase() === 'nvngx_dlssnr.dll');
+  if (!neural) throw fail('errNoNeuralRuntime');
+  const reshade64 = source.feeder && source.feeder.vulkanLayerDir ? path.join(source.feeder.vulkanLayerDir, 'ReShade64.dll') : null;
+
+  // 1) ReShade in the game (a global layer for Vulkan, as on the Feeder route).
+  if (api === 'vulkan') {
+    if (!source.feeder || !source.feeder.vulkanOk || !vulkanLayerTarget) throw fail('errVulkanSupportMissing');
+    manifest.vulkanLayer = await vulkanLayer.register({
+      sourceDir: source.feeder.vulkanLayerDir, targetDir: vulkanLayerTarget, gameDir, bitness, runner: registryRunner
+    });
+    await saveActiveManifest(gameDir, manifest);
+    log('vulkanLayerInstalled', { global: true, manifest: manifest.vulkanLayer.manifest });
+  } else {
+    await installReShadeAt({
+      gameDir, exePath, api: api === 'd3d10' ? 'dxgi' : api, manifest, reshadeSetup, setupRunner, log,
+      gameInstance: true, bitness, source, reshadeProxy
+    });
+  }
+
+  // 2) The add-on - one, of the game's bitness, and no other NR consumer.
+  const addonSource = bitness === 32 ? nr.addon32 : nr.addon64;
+  const addonName = bitness === 32 ? 'dlss5-nr.addon32' : 'dlss5-nr.addon64';
+  await setAsideRivalConsumers(manifest, gameDir, exeDir, addonName, log);
+  for (const stale of ['dlss5-feed.addon64', 'dlss5-feed.addon32']) {
+    if (fs.existsSync(path.join(exeDir, stale))) log('feederLeftover', { name: stale });
+  }
+  const addonRel = await copyTracked(manifest, gameDir, addonSource, path.join(exeDir, addonName), { kind: 'addon' });
+  log('addonInstalled', { rel: addonRel, name: addonName });
+
+  // 3) NVIDIA's runtime beside the exe; the host finds it there as well.
+  const runtimeDest = path.join(exeDir, 'nvngx_dlssnr.dll');
+  const current = fs.existsSync(runtimeDest) ? pe.getFileVersion(runtimeDest) : null;
+  if (current && neural.version && compareVersions(current, neural.version) >= 0) {
+    log(compareVersions(current, neural.version) > 0 ? 'skipNewerVersion' : 'skipSameVersion',
+      { rel: path.relative(gameDir, runtimeDest), version: current, ours: neural.version });
+  } else {
+    const rel = await copyTracked(manifest, gameDir, neural.path, runtimeDest, { kind: 'runtime', newVersion: neural.version });
+    log('added', { rel, version: neural.version });
+  }
+
+  // 4) The host, wherever the game is not D3D12 or Vulkan.
+  if (!dx12 && api !== 'vulkan') {
+    if (!reshade64 || !fs.existsSync(reshade64) || pe.getBitness(reshade64) !== 64 || !isAddonReShade(reshade64)) throw fail('errReShadeArchitecture');
+    const hostDir = path.join(exeDir, 'dlss5-nr-host');
+    for (const [src, name] of [[nr.hostExe, 'nr-host64.exe'], [nr.addon64, 'dlss5-nr.addon64'], [reshade64, 'ReShade64.dll']]) {
+      const rel = await copyTracked(manifest, gameDir, src, path.join(hostDir, name), { kind: 'lecram-host' });
+      log('added', { rel, version: pe.getFileVersion(src) });
+    }
+  }
+
+  await enableAddonInIni(exeDir, addonName, log, gameDir, manifest);
+  await saveActiveManifest(gameDir, manifest);
+  log('applyDone');
+  return manifest;
+}
+
 async function applySwap(config, onLog) {
   const log = (code, params) => onLog && onLog({ code, params: params || {} });
+  if (config.route === 'lecram12') return applyLecram12(config, log);
   const bitness = config.bitness || pe.getBitness(config.exePath);
   if (bitness === 32 || config.route === 'feeder') return applyFeeder(config, log);
   const {
@@ -1113,7 +1198,7 @@ async function removeNrLeftovers(gameDir, manifest, log) {
   const dirs = new Set();
   for (const entry of manifest.added || []) {
     const rel = typeof entry === 'string' ? entry : entry && entry.rel;
-    if (rel && /^dlss5-nr\.addon64$/i.test(path.basename(rel))) dirs.add(path.join(gameDir, path.dirname(rel)));
+    if (rel && /^dlss5-nr\.addon(?:64|32)$/i.test(path.basename(rel)) && !/dlss5-nr-host$/i.test(path.dirname(rel))) dirs.add(path.join(gameDir, path.dirname(rel)));
   }
   for (const dir of dirs) {
     const runtime = path.join(dir, 'dlss5-nr-runtime');
@@ -1127,6 +1212,19 @@ async function removeNrLeftovers(gameDir, manifest, log) {
     if (fs.existsSync(runtime) && onlyRuntime(runtime)) {
       try { await fs.promises.rm(runtime, { recursive: true, force: true }); log('deleted', { rel: path.relative(gameDir, runtime) }); }
       catch { /* in use: harmless, next Restore takes it */ }
+    }
+    // The v12.6 host writes its own ReShade.ini / logs next to itself. Once
+    // the tracked files are gone, only that is left - and then the folder goes.
+    const host = path.join(dir, 'dlss5-nr-host');
+    const onlyHostOutput = (folder) => {
+      try {
+        return fs.readdirSync(folder, { withFileTypes: true }).every((e) => e.isDirectory()
+          ? onlyHostOutput(path.join(folder, e.name))
+          : /\.(log|ini|txt|json|dmp)$/i.test(e.name));
+      } catch { return false; }
+    };
+    if (fs.existsSync(host) && onlyHostOutput(host)) {
+      try { await fs.promises.rm(host, { recursive: true, force: true }); log('deleted', { rel: path.relative(gameDir, host) }); } catch {}
     }
     for (const name of ['ReShade.ini.v11-backup', 'ReShade.ini.v12-backup']) {
       const file = path.join(dir, name);
@@ -1184,4 +1282,4 @@ async function makeReShadeConfigWritable(exeDir) {
   return cleared;
 }
 
-module.exports = { hookForApi, makeReShadeConfigWritable, applySwap, restore, restoreFiles, recoverableManifest, retireOldShaderCompiler, canWrite, backupRoot, compareVersions, beginManifest, originalPath, copyTracked, writeTracked, saveActiveManifest, enableAddonInIni, trackBeforeWrite };
+module.exports = { removeNrLeftovers, hookForApi, makeReShadeConfigWritable, applySwap, restore, restoreFiles, recoverableManifest, retireOldShaderCompiler, canWrite, backupRoot, compareVersions, beginManifest, originalPath, copyTracked, writeTracked, saveActiveManifest, enableAddonInIni, trackBeforeWrite };
